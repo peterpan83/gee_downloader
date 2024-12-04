@@ -19,3 +19,5 @@ run these commands to authenticate gcloud in the cli:
 
 usage:  
 `python main.py -c download.ini`
+
+This repository was migrated from arctus_2023 on Dec. 2024
