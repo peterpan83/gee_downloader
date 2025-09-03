@@ -29,9 +29,12 @@ class Downloader():
         self._target = str.lower(config['global']['target'])
         self._aoi_f = config['global']['aoi']
 
-        self.aoi_name = os.path.splitext(Pbasename(self._aoi_f))[0]
-        self.aoi_geo = gpd.read_file(self._aoi_f).geometry[0]
-        self.aoi_bounds = self.aoi_geo.bounds
+        self.project_name = os.path.splitext(Pbasename(self._aoi_f))[0]
+        self.save_dir = os.path.join(self.save_dir, self.project_name)
+
+        self.proj_gdf = gpd.read_file(self._aoi_f)
+
+
 
         self.asset_dic = self.__categroy_assets()
 

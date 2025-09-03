@@ -12,15 +12,16 @@ from downloader import Downloader
 
 class GEEDownloader(Downloader):
     def __init__(self, **config):
+        project_id = config['global']['project_id']
         try:
-            ee.Initialize()
+            ee.Initialize(project=project_id)
         except Exception as e:
             print('try authenticate')
             ee.Authenticate()
-            ee.Initialize()
+            ee.Initialize(project=project_id)
             sys.exit(-1)
         super(GEEDownloader, self).__init__(**config)
-        self.aoi_rect_ee = ee.Geometry.Rectangle(self.aoi_bounds)
+
 
     def __create_cells(self, resolution):
         # resolution = int(config['resolution'])
@@ -42,9 +43,19 @@ class GEEDownloader(Downloader):
         # self.ee_small_cells = [ee.Geometry.Rectangle([x[0], y[0], x[1], y[1]]) for x in xs for y in ys]
         # self.ee_small_cells_box = [([x[0], y[0], x[1], y[1]]) for x in xs for y in ys]
 
-        self.__create_cells(resolution=10)
+        for i, row in self.proj_gdf.iterrows():
+            self.aoi_geo = row['geometry']
+            if self.aoi_geo.type not in ['Polygon', 'MultiPolygon']:
+                raise ValueError('only Polygon or MultiPolygon is supported for the aoi')
+            self.aoi_name = row['name'] if 'name' in row else str(i)
+            print('Start for AOI:', self.aoi_name)
 
-        self.download_imagecollection()
+            self.aoi_bounds = self.aoi_geo.bounds
+            self.aoi_rect_ee = ee.Geometry.Rectangle(self.aoi_bounds)
+            self.__create_cells(resolution=10)
+
+
+            self.download_imagecollection()
 
     def download_imagecollection(self):
         '''
@@ -119,7 +130,7 @@ class GEEDownloader(Downloader):
                 continue
             print(f'{s_d}, {asset}, cloud percentage: {cloud_per} Start downloading ')
 
-            temp_dir = os.path.join(save_dir, s_d)
+            temp_dir = os.path.join(save_dir, f'{self.aoi_name}_{s_d}')
             try:
                 res, bands = download_images_roi(images=images, grids=(self.ee_small_cells,
                                                                     self.ee_small_cells_box),
