@@ -87,7 +87,7 @@ def download_images_roi(images: ee.ImageCollection, grids, save_dir, bands=None,
         if _ not in bands_all:
             bands_c.remove(_)
 
-    if len(bands_c) == 0:
+    if len(bands_c) == 0 or bands_c==['angle']:
         raise NoEEIntersectionBandsError()
 
     if not download:
@@ -146,7 +146,7 @@ def merge_download_dir(download_dir,
 
     ### the minimum size should vary with the resolution and grid size,
     ### to be fixed
-    tifs = [_ for _ in glob.glob(os.path.join(download_dir, f'*_*_*.tif')) if(os.path.getsize(_) / 1024.0) > 20 ]
+    tifs = [_ for _ in glob.glob(os.path.join(download_dir, f'*_*_*.tif')) if(os.path.getsize(_) / 1024.0) > (1.0*len(bandnames)) ]
     if len(tifs) < 1:
         raise DownloadDirIncompleteError(download_dir)
 
@@ -189,7 +189,7 @@ def merge_download_dir_obsgeo(func_obsgeo, download_dir,
 
         tilename = os.path.basename(pickle_file).split('_')[-2]
 
-        tifs = [_ for _ in glob.glob(os.path.join(download_dir, f'*_{tilename}_*.tif')) if(os.path.getsize(_) / 1024.0) > 100]
+        tifs = [_ for _ in glob.glob(os.path.join(download_dir, f'*_{tilename}_*.tif')) if(os.path.getsize(_) / 1024.0) > (1.0*len(bandnames))]
         if len(tifs) < 1:
             raise DownloadDirIncompleteError(download_dir)
 
@@ -284,7 +284,7 @@ def merge_download_dir_obsgeo(func_obsgeo, download_dir,
         bandnames += ['sza', 'vza', 'phi']
     else:
         logging.warning('OBSGEO is not available, using the mean values for the entire scene!')
-        output_f_ts = [_ for _ in glob.glob(os.path.join(download_dir, f'*.tif')) if(os.path.getsize(_) / 1024.0) > 100]
+        output_f_ts = [_ for _ in glob.glob(os.path.join(download_dir, f'*.tif')) if(os.path.getsize(_) / 1024.0) > (1.0*len(bandnames))]
 
     ret, dst_crs = merge_tifs(output_f_ts, output_f, descriptions=':'.join(descriptions),
                               descriptions_meta=descriptions_meta,

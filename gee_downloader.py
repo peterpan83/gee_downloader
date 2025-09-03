@@ -127,6 +127,7 @@ class GEEDownloader(Downloader):
                                               bands=bands,
                                               resolution=resolution)
             except Exception as e:
+                res = -1
                 print(f'{s_d},{asset}:{str(e)}')
 
             if res!=1:
