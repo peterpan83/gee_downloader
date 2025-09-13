@@ -11,7 +11,8 @@ import logging
 
 CATALOG_DIC = {'image_collections':
                    {'optical':('s2','lc08','lc09'),
-                    'radar':('s1')},
+                    'radar':('s1'),
+                    'embeding':('alphaearth')},
                'image':{}}
 
 class Downloader():
@@ -21,9 +22,6 @@ class Downloader():
         self.save_dir = config['global']['save_dir']
         self.cloud_percentage_threshold = float(config['global']['cloud_percentage'])
         self._assets = [str.lower(str.strip(_)) for _ in  config['global']['assets'].split(',')]
-
-        self.assets_dic = {}
-
 
         ## water or all
         self._target = str.lower(config['global']['target'])
@@ -61,6 +59,8 @@ class Downloader():
                     sensor_type = 'optical'
                 elif prefix in CATALOG_DIC['image_collections']['radar']:
                     sensor_type = 'radar'
+                elif prefix in CATALOG_DIC['image_collections']['embeding']:
+                    sensor_type = 'embeding'
 
                 elif prefix in CATALOG_DIC['image']:
                     if prefix not in image_dic:

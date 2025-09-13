@@ -23,17 +23,37 @@ class GEEDownloader(Downloader):
         super(GEEDownloader, self).__init__(**config)
 
 
-    def __create_cells(self, resolution):
+    def __create_cells_single(self, resolution, bandnumber):
         # resolution = int(config['resolution'])
         ## the cell size varies with the resolution
         ## it is 0.1 when the resolution is 10 based on the previous experience
-        step = 0.1 * (resolution / 10)
+
+        ## why 16? because it is tested ok for senteinel-2 l1c with 16 bands including obs geo
+        step = 0.1 * (resolution / 10) * 16 / bandnumber
 
         x_step, y_step = step, step
-        print('GEE cell size:', x_step, y_step)
+        print(f'GEE cell size for res:{resolution}, band num: {bandnumber}:', x_step, y_step)
         xs, ys = gen_subcells(self.aoi_geo, x_step=x_step, y_step=x_step)
-        self.ee_small_cells = [ee.Geometry.Rectangle([x[0], y[0], x[1], y[1]]) for x in xs for y in ys]
-        self.ee_small_cells_box = [([x[0], y[0], x[1], y[1]]) for x in xs for y in ys]
+        ee_small_cells = [ee.Geometry.Rectangle([x[0], y[0], x[1], y[1]]) for x in xs for y in ys]
+        ee_small_cells_box = [([x[0], y[0], x[1], y[1]]) for x in xs for y in ys]
+        return (ee_small_cells, ee_small_cells_box)
+
+
+    def __create_cells(self):
+        # print(self.asset_dic)
+        self.cells_dic = {}
+        for prefix in self.asset_dic['image_collection']:
+            sensor_type = self.asset_dic['image_collection'][prefix]['sensor_type']
+            config = self.asset_dic['image_collection'][prefix]['config']
+            for asset in config:
+                res = int(config[asset]['resolution'])
+                band_num = len(config[asset]['include_bands'].split(','))
+                if f'{band_num}_{res}' not in self.cells_dic:
+                    self.cells_dic[f'{band_num}_{res}'] = self.__create_cells_single(resolution=res, bandnumber=band_num)
+
+
+        # print(self._config_dic)
+
 
     def run(self):
         ## 1. generate small cells
@@ -48,12 +68,14 @@ class GEEDownloader(Downloader):
             if self.aoi_geo.type not in ['Polygon', 'MultiPolygon']:
                 raise ValueError('only Polygon or MultiPolygon is supported for the aoi')
             self.aoi_name = row['name'] if 'name' in row else str(i)
+            if self.aoi_name == 'patrick_site1':
+                continue
             print('Start for AOI:', self.aoi_name)
 
             self.aoi_bounds = self.aoi_geo.bounds
             self.aoi_rect_ee = ee.Geometry.Rectangle(self.aoi_bounds)
-            self.__create_cells(resolution=10)
 
+            self.__create_cells()
 
             self.download_imagecollection()
 
@@ -68,7 +90,6 @@ class GEEDownloader(Downloader):
             download_func = getattr(self, f'_download_{sensor_type}')
 
             config =  image_collection_dic[prefix]['config']
-
             download_func(prefix, **config)
             # self.download_func = getattr(self, f'_download_{prefix}')
             # self.download_func(image_collection_dic[prefix])
@@ -101,6 +122,11 @@ class GEEDownloader(Downloader):
 
             bands = [str.strip(_) for _ in config[asset]['include_bands'].split(',')]
             resolution = int(config[asset]['resolution'])
+
+            grids = self.cells_dic.get(f'{len(bands)}_{resolution}', None)
+            if grids is None:
+                raise NoEEIntersectionBandsError(f'no grid found for {asset} with {len(bands)} bands and {resolution}m resolution')
+
             anynom = config[asset]['anonym']
             asset_savedir = config[asset]['save_dir']
 
@@ -132,8 +158,7 @@ class GEEDownloader(Downloader):
 
             temp_dir = os.path.join(save_dir, f'{self.aoi_name}_{s_d}')
             try:
-                res, bands = download_images_roi(images=images, grids=(self.ee_small_cells,
-                                                                    self.ee_small_cells_box),
+                res, bands = download_images_roi(images=images, grids=grids,
                                               save_dir=temp_dir,
                                               bands=bands,
                                               resolution=resolution)
@@ -178,6 +203,7 @@ class GEEDownloader(Downloader):
             except Exception as e:
                 print(e)
                 continue
+
 
     def _download_optical(self, prefix, **config):
         '''
@@ -226,3 +252,82 @@ class GEEDownloader(Downloader):
         '''
         for _date in (self.end_date - self.start_date):
             self.__download_imgcoll_assets(date=_date, **config)
+
+
+    def _download_embeding(self, prefix, **config):
+        for _year in range(self.end_date.year, self.start_date.year+1):
+
+            s_d, e_d = f'{_year}-01-01', f'{_year+1}-01-01'
+            _s_d = str(_year)
+
+            dst_crs = None
+            for asset in config:
+                config_asset = config[asset]
+                if asset in ['extral_info']:
+                    continue
+                rgb = False
+                vmin, vmax = None, None
+                if asset.find('rgb') > -1:
+                    vmin = float(config[asset]['vmin'])
+                    vmax = float(config[asset]['vmax'])
+                    rgb = True
+
+                data_source = config[asset]['source']
+                bands = [str.strip(_) for _ in config[asset]['include_bands'].split(',')]
+                resolution = int(config[asset]['resolution'])
+                grids = self.cells_dic.get(f'{len(bands)}_{resolution}', None)
+                if grids is None:
+                    raise NoEEIntersectionBandsError(
+                        f'no grid found for {asset} with {len(bands)} bands and {resolution}m resolution')
+
+                anynom = config[asset]['anonym']
+                asset_savedir = config[asset]['save_dir']
+
+                extral_info_dic = config['extral_info'] if 'extral_info' in config else {}
+
+                save_dir = os.path.join(self.save_dir, asset_savedir, anynom)
+
+                ofs = glob.glob(os.path.join(save_dir, f'{str.upper(asset)}_{_s_d}*{self.aoi_name}_{resolution}m.tif'))
+                if len(ofs) == 1:
+                    print(f'{s_d}, {asset} exist, skip downloading')
+                    continue
+
+                images = ee.ImageCollection(data_source).filterDate(s_d, e_d).filterBounds(self.aoi_rect_ee)
+                if len(images.getInfo()['features']) == 0:
+                    print(f'{_s_d}, {asset},No image found!')
+                    continue
+                print(f'{_s_d}, {asset},Start downloading ')
+
+                temp_dir = os.path.join(save_dir, f'{self.aoi_name}_{_s_d}')
+                try:
+                    res, bands = download_images_roi(images=images, grids=grids,
+                                                     save_dir=temp_dir,
+                                                     bands=bands,
+                                                     resolution=resolution)
+                except Exception as e:
+                    res = -1
+                    print(f'{s_d},{asset}:{str(e)}')
+
+                if res != 1:
+                    continue
+                    # prefix, acquisition_time, des, des_meta = getattr(gee, f'get_descriptions_{asset}')(temp_dir) if hasattr(gee, f'get_descriptions_{asset}') else None
+                # else:
+                prefix, acquisition_time, des, des_meta = '', str(_year), [], ''
+                #
+                #
+                output_f = os.path.join(save_dir,
+                                        f'{str.upper(asset)}_{acquisition_time}_{self.aoi_name}_{resolution}m.tif')
+                try:
+                    dst_crs = merge_download_dir(download_dir=temp_dir,
+                                                     output_f=output_f,
+                                                     dst_crs=dst_crs,
+                                                     descriptions=des,
+                                                     descriptions_meta=des_meta,
+                                                     bandnames=bands,
+                                                     remove_temp=True,
+                                                     RGB=rgb,
+                                                     min_max=(vmin, vmax),
+                                                     **extral_info_dic)
+                except Exception as e:
+                    print(e)
+                    continue

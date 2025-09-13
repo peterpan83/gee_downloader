@@ -60,7 +60,7 @@ def download_images_roi(images: ee.ImageCollection, grids, save_dir, bands=None,
     # ee_small_cells = [ee.Geometry.Rectangle([x[0], y[0], x[1], y[1]]) for x in xs for y in ys]
     # ee_small_cells_box = [([x[0], y[0], x[1], y[1]]) for x in xs for y in ys]
     ee_small_cells, ee_small_cells_box = grids
-    bands_c = bands.copy()
+
     # print(images)
     img_count = len(images.getInfo()['features'])
     info_s = glob.glob(os.path.join(save_dir, '*.pickle'))
@@ -82,10 +82,14 @@ def download_images_roi(images: ee.ImageCollection, grids, save_dir, bands=None,
             info = img.getInfo()
             bands_all = set([_['id'] for _ in info['bands']]) if bands_all is None \
                 else bands_all.intersection(set([_['id'] for _ in info['bands']]))
-
-    for _ in bands:
-        if _ not in bands_all:
-            bands_c.remove(_)
+    if bands is None:
+        bands = sorted(list(bands_all))
+        bands_c = bands.copy()
+    else:
+        bands_c = bands.copy()
+        for _ in bands:
+            if _ not in bands_all:
+                bands_c.remove(_)
 
     if len(bands_c) == 0 or bands_c==['angle']:
         raise NoEEIntersectionBandsError()
@@ -105,7 +109,10 @@ def download_images_roi(images: ee.ImageCollection, grids, save_dir, bands=None,
             pickle.dump(info, f, pickle.HIGHEST_PROTOCOL)
         # print(_id.split('/')[-1][:8] + '_' + _id.split('_')[-1])
 
-        name = _id_name[:8] + '_' + _id.split('_')[-1]
+        # name = _id_name[:8] + '_' + _id.split('_')[-1]
+        name = _id_name
+        if name.find('_') < 0:
+            name = '00_'+name
         for j, (ee_c, ee_c_b) in enumerate(zip(ee_small_cells, ee_small_cells_box)):
             try:
                 url = img.getDownloadURL({
@@ -122,8 +129,13 @@ def download_images_roi(images: ee.ImageCollection, grids, save_dir, bands=None,
             # print(url)
             print(f'downloading {url}')
             response = requests.get(url)
-            with open(os.path.join(save_dir, name + '_' + str(j) + '.tif'), 'wb') as f:
+            o_f = os.path.join(save_dir, name + '_' + str(j) + '.tif')
+            with open(o_f, 'wb') as f:
                 f.write(response.content)
+
+            fix_raster_upsidedown(o_f,output_tif=o_f)
+
+
     return 1, bands_c
 
 
@@ -300,4 +312,31 @@ def merge_download_dir_obsgeo(func_obsgeo, download_dir,
     #     shutil.rmtree(download_dir)
     return dst_crs
 
+
+def fix_raster_upsidedown(input_tif, output_tif):
+    import rasterio
+    from rasterio.enums import Resampling
+    from rasterio import Affine
+
+    upsidedown = False
+
+    with rasterio.open(input_tif) as src:
+        profile = src.profile
+        # Ensure transform has negative y pixel size
+        transform = src.transform
+        if transform.e > 0:  # y pixel size
+            e = transform.e *(-1)
+            f = transform.f + (src.height * transform.e)
+            transform = Affine(a=transform.a, b=transform.b, c=transform.c,
+                               d=transform.d, e=e, f=f)
+            upsidedown = True
+            data = src.read(
+                out_shape=(src.count, src.height, src.width),
+                resampling=Resampling.nearest
+            )
+
+    if upsidedown:
+        profile.update(transform=transform)
+        with rasterio.open(output_tif, "w", **profile) as dst:
+            dst.write(data[:, ::-1, :])
 
