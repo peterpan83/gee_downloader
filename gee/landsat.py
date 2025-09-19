@@ -81,6 +81,11 @@ def get_cloudpercentage(date, aoi_rect_ee, satellite='LC08', cloud_prob_threshol
     return cloud_pixels / total_pixels * 100
 
 
+def get_snowicepercentage(date, aoi_rect_ee, water_mask=None,resolution=20):
+    return 0
+
+
+
 #################### l8 ######################################
 def get_l8_cloudpercentage(date, aoi_rect_ee, cloud_prob_threshold=60, water_mask=None,resolution=20):
     return get_cloudpercentage(date=date,
@@ -90,6 +95,12 @@ def get_l8_cloudpercentage(date, aoi_rect_ee, cloud_prob_threshold=60, water_mas
                                water_mask=water_mask,
                                resolution=resolution)
     # COPERNICUS / S2_CLOUD_PROBABILITY
+
+def get_l8_snowicepercentage(date, aoi_rect_ee, water_mask=None,resolution=20):
+    return get_snowicepercentage(date=date,
+                                 aoi_rect_ee=aoi_rect_ee,
+                                 water_mask=water_mask,
+                                 resolution=resolution)
 
 
 
@@ -134,6 +145,12 @@ def get_l9_cloudpercentage(date, aoi_rect_ee, cloud_prob_threshold=60, water_mas
                                cloud_prob_threshold=cloud_prob_threshold,
                                water_mask=water_mask,
                                resolution=resolution)
+
+def get_l9_snowicepercentage(date, aoi_rect_ee, water_mask=None,resolution=20):
+    return get_snowicepercentage(date=date,
+                                 aoi_rect_ee=aoi_rect_ee,
+                                 water_mask=water_mask,
+                                 resolution=resolution)
 
 
 

@@ -1,4 +1,6 @@
 import os, glob, sys
+
+import pandas as pd
 import rasterio
 import pendulum
 
@@ -62,23 +64,60 @@ class GEEDownloader(Downloader):
         # xs, ys = gen_subcells(self.aoi_geo, x_step=x_step, y_step=x_step)
         # self.ee_small_cells = [ee.Geometry.Rectangle([x[0], y[0], x[1], y[1]]) for x in xs for y in ys]
         # self.ee_small_cells_box = [([x[0], y[0], x[1], y[1]]) for x in xs for y in ys]
-
         for i, row in self.proj_gdf.iterrows():
             self.aoi_geo = row['geometry']
             if self.aoi_geo.type not in ['Polygon', 'MultiPolygon']:
                 raise ValueError('only Polygon or MultiPolygon is supported for the aoi')
             self.aoi_name = row['name'] if 'name' in row else str(i)
-            if self.aoi_name == 'patrick_site1':
+            if self.aoi_name != '295826':
                 continue
             print('Start for AOI:', self.aoi_name)
 
+            self.info_csv = self.save_dir+'/'+f'{self.aoi_name}_imagecollection_info.csv' ## [date, sensor, type, acquisition_time, cloud_percentage, snow_ice_percentage]
+            if not os.path.exists(self.info_csv):
+                with open(self.info_csv, 'w') as f:
+                    f.write('date,sensor,type,acquisition_time,cloud_percentage,snow_ice_percentage,water_percentage,other_percentage\n')
+            self.info_df = pd.read_csv(self.info_csv)
+            # print(self.info_df.columns[1])
+
+
             self.aoi_bounds = self.aoi_geo.bounds
+
+            if self.aoi_bounds[3]>77.2 or self.aoi_bounds[1]<-55.8:
+                self.water_mask = False
+            else:
+                self.water_mask = True
+
+
+
             self.aoi_rect_ee = ee.Geometry.Rectangle(self.aoi_bounds)
 
             self.__create_cells()
 
+            # self.download_imagecollection()
             self.download_imagecollection()
 
+                # df['aoi_name'] = self.aoi_name
+                # df.to_csv(self.save_dir+'/'+f'{self.aoi_name}_imagecollection_info.csv', index=False)
+
+
+
+    # def info_imagecollection(self):
+    #     image_collection_dic = self.asset_dic['image_collection']
+    #     info_s = []
+    #     for prefix in image_collection_dic:
+    #         sensor_type = image_collection_dic[prefix]['sensor_type']
+    #         info_func = getattr(self, f'_info_{sensor_type}')
+    #
+    #         config =  image_collection_dic[prefix]['config']
+    #         # print(prefix, config)
+    #         info = info_func(prefix, **config)
+    #         info_s.append(info+[sensor_type])
+    #     info_df = pd.DataFrame(data=info_s, columns=['sensor', 'acquisition_time', 'cloud_percentage', 'snow_ice_percentage','sensor_type'])
+    #     return info_df
+
+            # self.download_func = getattr(self, f'_download_{prefix}')
+            # self.download_func(image_collection_dic[prefix])
     def download_imagecollection(self):
         '''
         start_date='2021-08-01'
@@ -225,12 +264,39 @@ class GEEDownloader(Downloader):
             ## 1. obtain cloud percentage
 
             func_cld = getattr(gee, f'get_{prefix}cld')
+            func_snowice = getattr(gee, f'get_{prefix}snowice')
+
+
             # cld_percentage = self.get_s2_cloudpercentage(s_d='2018-06-10',e_d='2018-06-11')
             try:
-                cld_percentage = func_cld(_date, self.aoi_rect_ee,
-                                      cloud_prob_threshold=60,
+                record = self.info_df[(self.info_df['date']==_date.format('YYYY-MM-DD')) & (self.info_df['sensor']==prefix)]
+                if record.shape[0]>0:
+                    cld_percentage = float(record['cloud_percentage'].values[0])
+                    snowice_percentage = float(record['snow_ice_percentage'].values[0])
+                    # acquisition_time = record['acquisition_time'].values[0]
+
+                else:
+                    # acquisition_time = getattr(gee, f'get_{prefix}acq')(_date, self.aoi_rect_ee)
+                    # cld_percentage = func_cld(_date, self.aoi_rect_ee,
+                    #                   cloud_prob_threshold=60,
+                    #                   water_mask=water_mask,
+                    #                   resolution=20)
+
+                    # acq_time, snowice_pixels / total_pixels * 100, cloud_pixels / total_pixels * 100, water_pixels / total_pixels * 100, other_pixels / total_pixels * 100
+
+                    acquisition_time, snowice_percentage, cld_percentage, water_p,other_p = func_snowice(_date, self.aoi_rect_ee,
                                       water_mask=water_mask,
                                       resolution=20)
+
+                    # date, sensor, type, acquisition_time, cloud_percentage, snow_ice_percentage
+
+                    info = {"date": _date.format('YYYY-MM-DD'), "sensor": prefix, "type": "optical", "acquisition_time": acquisition_time,"cloud_percentage": round(cld_percentage,1), "snow_ice_percentage": round(snowice_percentage,1),"water_percentage": round(water_p,1),"other_percentage": round(other_p,1)}
+                    print(f'{_date}, {prefix}, "optical", {acquisition_time}, {round(cld_percentage,1)},{round(snowice_percentage,1)}, {round(water_p,1)},{round(other_p,1)}')
+
+                    info = pd.DataFrame([info])
+                    info.to_csv(self.info_csv, mode='a', header=False, index=False)
+
+
             except NoEEImageFoundError as e:
                 print(e)
                 continue
@@ -238,8 +304,15 @@ class GEEDownloader(Downloader):
                 print(e)
                 continue
 
+            if self.mode == 'info':
+                continue
+
             if cld_percentage > self.cloud_percentage_threshold:
                 print(f'{_date}, {prefix}, cloud percentage = {round(cld_percentage,1)} > {self.cloud_percentage_threshold}. skip!')
+                continue
+
+            if snowice_percentage > self.snow_ice_percentage_threshold:
+                print(f'{_date}, {prefix}, snowice percentage = {round(snowice_percentage,1)} > {self.snow_ice_percentage_threshold}. skip!')
                 continue
 
             config.update({'extral_info':{'cloud_percentage': round(cld_percentage,1)}})

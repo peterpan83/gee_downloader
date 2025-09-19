@@ -21,6 +21,9 @@ class Downloader():
 
         self.save_dir = config['global']['save_dir']
         self.cloud_percentage_threshold = float(config['global']['cloud_percentage'])
+        self.snow_ice_percentage_threshold = float(config['global']['snowice_percentage'])
+        self.mode = str.lower(config['global']['mode'])  ## download or info
+
         self._assets = [str.lower(str.strip(_)) for _ in  config['global']['assets'].split(',')]
 
         ## water or all
@@ -31,6 +34,7 @@ class Downloader():
         self.save_dir = os.path.join(self.save_dir, self.project_name)
 
         self.proj_gdf = gpd.read_file(self._aoi_f)
+        self.water_mask = True
 
 
 

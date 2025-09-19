@@ -95,8 +95,102 @@ def add_cloudpixelsnumber_image(images: ee.ImageCollection, roi_rect, resolution
     images = images.map(__f)
     return images
 
+
+def add_snowicepixelsnumber_image(images: ee.ImageCollection, roi_rect, resolution=10, water_mask=None):
+    # images = images.updateMask(water_mask)
+    # dataset = ee.Image('JRC/GSW1_4/GlobalSurfaceWater').clip(roi_rect)
+    # water_mask = dataset.select('occurrence').gt(0)
+    def __f(image:ee.Image):
+        if water_mask is not None:
+            image = image.updateMask(water_mask)
+        prob = image.select('SCL')
+        snow_mask = prob.eq(11) ## 11 snow/ice  , some L2A image has very high reflectance > 10000 for snowy areas
+        _water_mask = prob.eq(6)
+        cloud_mask = prob.eq(7).Or(prob.eq(8)).Or(prob.eq(9)).Or(prob.eq(10)).Or(prob.eq(3))
+        other_mask = prob.eq(1).Or(prob.eq(2)).Or(prob.eq(4)).Or(prob.eq(5))
+
+        total_mask = prob.gt(0)
+
+        water = _water_mask.rename('water')
+        cloud = cloud_mask.rename('cloud')
+        other = other_mask.rename('other')
+        snowice = snow_mask.rename('snowice')
+        total = total_mask.rename('total')
+
+        image = image.addBands(snowice).addBands(total).addBands(cloud).addBands(water).addBands(other)
+
+        reducer = image.reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=roi_rect,
+            scale=resolution,
+            maxPixels=1e11
+        )
+
+        snowicepixels = reducer.get('snowice')
+        waterpixels = reducer.get('water')
+        cloudpixels = reducer.get('cloud')
+        otherpixels = reducer.get('other')
+        totalpixels = reducer.get('total')
+
+        return image.set('snowice_num', snowicepixels).set('total_num', totalpixels).set('water_num', waterpixels).set('other_num', otherpixels).set('cloud_num', cloudpixels)
+    images = images.map(__f)
+    return images
+
 # def get_s2_cloudpercentage():
 #     print('get_s2_cloudpercentage')
+
+def get_s2_snowicepercentage(date, aoi_rect_ee, water_mask=None,resolution=20):
+    s_d, e_d = date.format('YYYY-MM-DD'), (date + pendulum.duration(days=1)).format('YYYY-MM-DD')
+    # COPERNICUS / S2_CLOUD_PROBABILITY
+    images_snowiceprob = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED').filterDate(s_d, e_d).filterBounds(aoi_rect_ee)
+
+    # images = add_surfacewater_cloudprob(images_cloudprob,roi_rect=self.roi_rect)
+    features = images_snowiceprob.getInfo()['features']
+    img_count_snowiceprob = len(features)
+    images_snowice = add_snowicepixelsnumber_image(images_snowiceprob,roi_rect=aoi_rect_ee,
+                                               resolution=resolution,
+                                               water_mask=water_mask)
+
+    images_snowice_list = images_snowice.toList(images_snowice.size())
+
+    total_pixels, snowice_pixels, cloud_pixels,water_pixels, other_pixels = 0, 0, 0,0,0
+
+    if img_count_snowiceprob == 0:
+        raise NoEEImageFoundError('COPERNICUS/S2_SR_HARMONIZED',date=s_d)
+
+    acq_time = features[0]['properties']['PRODUCT_ID'].split('_')[2]
+
+    for i in range(img_count_snowiceprob):
+        img_1 = ee.Image(images_snowice_list.get(i)).clip(aoi_rect_ee)
+        snowicenum = ee.Number(img_1.get('snowice_num')).getInfo() ##90:30 60:986
+        cloudnum = ee.Number(img_1.get('cloud_num')).getInfo()
+        waternum = ee.Number(img_1.get('water_num')).getInfo()
+        othernum = ee.Number(img_1.get('other_num')).getInfo()
+        totalnum = ee.Number(img_1.get('total_num')).getInfo()
+        snowice_pixels += snowicenum
+        cloud_pixels += cloudnum
+        water_pixels += waternum
+        other_pixels += othernum
+        total_pixels += totalnum
+
+    if total_pixels == 0:
+        raise EEImageOverlayError(ee_source='S2_SNOW_ICE_PROBABILITY',date=s_d)
+    return acq_time, snowice_pixels/total_pixels*100, cloud_pixels/total_pixels*100, water_pixels/total_pixels*100, other_pixels/total_pixels*100
+
+def get_s2_acquistion(date, aoi_rect_ee):
+    s_d, e_d = date.format('YYYY-MM-DD'), (date + pendulum.duration(days=1)).format('YYYY-MM-DD')
+    # COPERNICUS / S2_CLOUD_PROBABILITY
+    images = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED').filterDate(s_d, e_d).filterBounds(aoi_rect_ee)
+
+    # images = add_surfacewater_cloudprob(images_cloudprob,roi_rect=self.roi_rect)
+
+    features = images.getInfo()['features']
+    img_count_snowiceprob = len(features)
+    if img_count_snowiceprob == 0:
+        raise NoEEImageFoundError('COPERNICUS/S2_SR_HARMONIZED',date=s_d)
+    # id = features[0]['id']
+    acq_time = features[0]['properties']['PRODUCT_ID'].split('_')[2]
+    return acq_time
 
 def get_s2_cloudpercentage(date, aoi_rect_ee, cloud_prob_threshold=60, water_mask=None,resolution=20):
     s_d, e_d = date.format('YYYY-MM-DD'), (date + pendulum.duration(days=1)).format('YYYY-MM-DD')
