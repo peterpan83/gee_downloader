@@ -153,7 +153,7 @@ def get_s2_snowicepercentage(date, aoi_rect_ee, water_mask=None,resolution=20):
 
     images_snowice_list = images_snowice.toList(images_snowice.size())
 
-    total_pixels, snowice_pixels, cloud_pixels,water_pixels, other_pixels = 0, 0, 0,0,0
+    total_pixels, snowice_pixels, cloud_pixels,water_pixels, other_pixels = 0, 0, 0, 0, 0
 
     if img_count_snowiceprob == 0:
         raise NoEEImageFoundError('COPERNICUS/S2_SR_HARMONIZED',date=s_d)

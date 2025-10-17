@@ -15,6 +15,11 @@ CATALOG_DIC = {'image_collections':
                     'embeding':('alphaearth')},
                'image':{}}
 
+INFO_COL_DIC = {
+    'optical':['date','sensor','type','acquisition_time','cloud_percentage','snow_ice_percentage','water_percentage','other_percentage'],
+    'radar':['date','sensor','type','acquisition_time','bands']
+}
+
 class Downloader():
     def __init__(self, **config):
         self._config_dic = config
@@ -72,7 +77,7 @@ class Downloader():
                     else:
                         image_dic[prefix]['config'].update({_: _config_dic})
 
-                imagecoll_dic[prefix] = {'sensor_type':sensor_type, 'config':{_:_config_dic}}
+                imagecoll_dic[prefix] = {'sensor_type':sensor_type, 'config':{_:_config_dic}, 'info_col':INFO_COL_DIC[sensor_type]}
 
             else:
                 imagecoll_dic[prefix]['config'].update({_:_config_dic})

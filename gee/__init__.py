@@ -20,3 +20,4 @@ from .s2 import get_obsgeo as get_obsgeo_s2_l1toa
 
 
 from .s1 import get_descriptions_l1c as get_descriptions_s1_l1c
+from .s1 import get_s1_info as get_s1info

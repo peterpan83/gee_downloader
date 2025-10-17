@@ -69,15 +69,12 @@ class GEEDownloader(Downloader):
             if self.aoi_geo.type not in ['Polygon', 'MultiPolygon']:
                 raise ValueError('only Polygon or MultiPolygon is supported for the aoi')
             self.aoi_name = row['name'] if 'name' in row else str(i)
-            if self.aoi_name != '295826':
+            # if self.aoi_name != '295826':
+            #     continue
+            if i<=800 or i>1000:
                 continue
             print('Start for AOI:', self.aoi_name)
 
-            self.info_csv = self.save_dir+'/'+f'{self.aoi_name}_imagecollection_info.csv' ## [date, sensor, type, acquisition_time, cloud_percentage, snow_ice_percentage]
-            if not os.path.exists(self.info_csv):
-                with open(self.info_csv, 'w') as f:
-                    f.write('date,sensor,type,acquisition_time,cloud_percentage,snow_ice_percentage,water_percentage,other_percentage\n')
-            self.info_df = pd.read_csv(self.info_csv)
             # print(self.info_df.columns[1])
 
 
@@ -94,30 +91,8 @@ class GEEDownloader(Downloader):
 
             self.__create_cells()
 
-            # self.download_imagecollection()
             self.download_imagecollection()
 
-                # df['aoi_name'] = self.aoi_name
-                # df.to_csv(self.save_dir+'/'+f'{self.aoi_name}_imagecollection_info.csv', index=False)
-
-
-
-    # def info_imagecollection(self):
-    #     image_collection_dic = self.asset_dic['image_collection']
-    #     info_s = []
-    #     for prefix in image_collection_dic:
-    #         sensor_type = image_collection_dic[prefix]['sensor_type']
-    #         info_func = getattr(self, f'_info_{sensor_type}')
-    #
-    #         config =  image_collection_dic[prefix]['config']
-    #         # print(prefix, config)
-    #         info = info_func(prefix, **config)
-    #         info_s.append(info+[sensor_type])
-    #     info_df = pd.DataFrame(data=info_s, columns=['sensor', 'acquisition_time', 'cloud_percentage', 'snow_ice_percentage','sensor_type'])
-    #     return info_df
-
-            # self.download_func = getattr(self, f'_download_{prefix}')
-            # self.download_func(image_collection_dic[prefix])
     def download_imagecollection(self):
         '''
         start_date='2021-08-01'
@@ -126,6 +101,20 @@ class GEEDownloader(Downloader):
 
         for prefix in image_collection_dic:
             sensor_type = image_collection_dic[prefix]['sensor_type']
+
+            self.info_csv = self.save_dir + '/' + f'{self.aoi_name}_imagecollection_{sensor_type}_info.csv'  ## [date, sensor, type, acquisition_time, cloud_percentage, snow_ice_percentage]
+            self.info_cols = image_collection_dic[prefix]['info_col']
+
+            if not os.path.exists(self.info_csv):
+                with open(self.info_csv, 'w') as f:
+                    # f.write(
+                    #     'date,sensor,type,acquisition_time,cloud_percentage,snow_ice_percentage,water_percentage,other_percentage\n')
+                    f.write(','.join(self.info_cols) + '\n')
+
+
+            self.info_df = pd.read_csv(self.info_csv)
+
+
             download_func = getattr(self, f'_download_{sensor_type}')
 
             config =  image_collection_dic[prefix]['config']
@@ -256,16 +245,14 @@ class GEEDownloader(Downloader):
         else:
             water_mask = None
 
+        func_cld = getattr(gee, f'get_{prefix}cld')
+        func_snowice = getattr(gee, f'get_{prefix}snowice')
         for _date in (self.end_date - self.start_date):
             # print(_date.month)
             # if _date.month < 6 or _date.month>10:
             #     print(_date.month, '-------skip')
             #     continue
             ## 1. obtain cloud percentage
-
-            func_cld = getattr(gee, f'get_{prefix}cld')
-            func_snowice = getattr(gee, f'get_{prefix}snowice')
-
 
             # cld_percentage = self.get_s2_cloudpercentage(s_d='2018-06-10',e_d='2018-06-11')
             try:
@@ -323,9 +310,31 @@ class GEEDownloader(Downloader):
         '''
         does not require cloud percentage
         '''
-        for _date in (self.end_date - self.start_date):
-            self.__download_imgcoll_assets(date=_date, **config)
+        func_info = getattr(gee, f'get_{prefix}info')
 
+        for _date in (self.end_date - self.start_date):
+            info_dic = {"date": _date.format('YYYY-MM-DD'), "sensor": prefix, "type": "radar",
+                        "acquisition_time": '', 'bands': ''}
+            # print(_date.month)
+            record = self.info_df[
+                (self.info_df['date'] == _date.format('YYYY-MM-DD')) & (self.info_df['sensor'] == prefix)]
+            if record.shape[0] > 0:
+                acquisition_time, bands  = record[['acquisition_time', 'bands']].values[0]
+            else:
+                acquisition_time, bands = func_info(_date, self.aoi_rect_ee)
+
+                info_dic.update({'acquisition_time': acquisition_time, 'bands': bands})
+
+                info_df = pd.DataFrame([info_dic])
+                info_df.to_csv(self.info_csv, mode='a', header=False, index=False)
+
+            print(
+                f'{_date}, {prefix}, "radar", {acquisition_time}, {bands}')
+
+            if self.mode == 'info':
+                continue
+
+            self.__download_imgcoll_assets(date=_date, **config)
 
     def _download_embeding(self, prefix, **config):
         for _year in range(self.end_date.year, self.start_date.year+1):
