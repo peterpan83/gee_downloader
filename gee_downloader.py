@@ -68,11 +68,12 @@ class GEEDownloader(Downloader):
             self.aoi_geo = row['geometry']
             if self.aoi_geo.type not in ['Polygon', 'MultiPolygon']:
                 raise ValueError('only Polygon or MultiPolygon is supported for the aoi')
-            self.aoi_name = row['name'] if 'name' in row else str(i)
-            # if self.aoi_name != '295826':
+            self.aoi_name = str(row['name']) if 'name' in row else str(i)
+            # print(type(row['name']), row['name'])
+            # if self.aoi_name != '338850':
             #     continue
-            if i<=800 or i>1000:
-                continue
+            # if i<=1500 or i>1600:
+            #     continue
             print('Start for AOI:', self.aoi_name)
 
             # print(self.info_df.columns[1])
@@ -90,6 +91,16 @@ class GEEDownloader(Downloader):
             self.aoi_rect_ee = ee.Geometry.Rectangle(self.aoi_bounds)
 
             self.__create_cells()
+
+            if self.date_df is not None:
+                self.date_downloading = self.date_df[self.date_df['name'] == self.aoi_name]['date'].values
+                if self.date_downloading.shape[0] < 1:
+                    raise Exception(f'no date found for aoi {self.aoi_name}')
+                self.date_downloading = [pendulum.from_format(str(_), 'YYYYMMDD') for _ in self.date_downloading]
+
+            else:
+                self.date_downloading = self.end_date - self.start_date
+
 
             self.download_imagecollection()
 
@@ -247,7 +258,7 @@ class GEEDownloader(Downloader):
 
         func_cld = getattr(gee, f'get_{prefix}cld')
         func_snowice = getattr(gee, f'get_{prefix}snowice')
-        for _date in (self.end_date - self.start_date):
+        for _date in self.date_downloading:
             # print(_date.month)
             # if _date.month < 6 or _date.month>10:
             #     print(_date.month, '-------skip')
@@ -312,7 +323,7 @@ class GEEDownloader(Downloader):
         '''
         func_info = getattr(gee, f'get_{prefix}info')
 
-        for _date in (self.end_date - self.start_date):
+        for _date in self.date_downloading:
             info_dic = {"date": _date.format('YYYY-MM-DD'), "sensor": prefix, "type": "radar",
                         "acquisition_time": '', 'bands': ''}
             # print(_date.month)

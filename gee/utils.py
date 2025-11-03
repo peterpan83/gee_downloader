@@ -90,7 +90,7 @@ def download_images_roi(images: ee.ImageCollection, grids, save_dir, bands=None,
         for _ in bands:
             if _ not in bands_all:
                 bands_c.remove(_)
-
+    # bands_c = ['VV', 'VH', 'angle']
     if len(bands_c) == 0 or bands_c==['angle']:
         raise NoEEIntersectionBandsError()
 
@@ -98,7 +98,10 @@ def download_images_roi(images: ee.ImageCollection, grids, save_dir, bands=None,
         return 1, bands_c
 
     ### download
+
     for i in range(img_count):
+        # if i==0:
+        #     continue
         _id = images.getInfo()['features'][i]['id']
         img = ee.Image(_id)
         info = img.getInfo()

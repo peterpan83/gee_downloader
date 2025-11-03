@@ -3,6 +3,7 @@ from os.path import exists as Pexists
 from os.path import split as Psplit
 from os.path import basename as Pbasename
 
+import pandas as pd
 import rasterio
 import pendulum
 import geopandas as gpd
@@ -45,8 +46,21 @@ class Downloader():
 
         self.asset_dic = self.__categroy_assets()
 
-        self.start_date = pendulum.from_format(self._config_dic['global']['start_date'], 'YYYY-MM-DD')
-        self.end_date = pendulum.from_format(self._config_dic['global']['end_date'], 'YYYY-MM-DD')
+        ### should at least contain aoi name and date YYYYMMDD
+        self.date_csv = self._config_dic['global']['date_csv'] if 'date_csv' in self._config_dic['global'] else None
+        self.date_df = None
+        if self.date_csv is not None:
+            self.date_df = pd.read_csv(self.date_csv) if self.date_csv is not None else None
+            # print(self.date_df)
+            # self.date_df["date"] = self.date_df.apply(lambda x: pendulum.from_format(str(x['date']), "YYYYMMDD"),axis=1)
+            self.date_df['name'] = self.date_df['name'].astype(str)
+
+
+        self.start_date = pendulum.from_format(self._config_dic['global']['start_date'], 'YYYY-MM-DD') if 'start_date' in self._config_dic['global'] else None
+        self.end_date = pendulum.from_format(self._config_dic['global']['end_date'], 'YYYY-MM-DD') if 'end_date' in self._config_dic['global'] else None
+
+        if (self.date_df is None) & ((self.start_date is None) or (self.end_date is None)):
+            raise Exception('either date_csv or start_date/end_date for downloading is required')
 
         if not Pexists(self.save_dir):
             os.makedirs(self.save_dir)
