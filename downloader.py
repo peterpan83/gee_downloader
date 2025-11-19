@@ -18,7 +18,8 @@ CATALOG_DIC = {'image_collections':
 
 INFO_COL_DIC = {
     'optical':['date','sensor','type','acquisition_time','cloud_percentage','snow_ice_percentage','water_percentage','other_percentage'],
-    'radar':['date','sensor','type','acquisition_time','bands']
+    'radar':['date','sensor','type','acquisition_time','bands'],
+    'embeding':['date','sensor']
 }
 
 class Downloader():

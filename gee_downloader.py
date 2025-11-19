@@ -69,10 +69,13 @@ class GEEDownloader(Downloader):
             if self.aoi_geo.type not in ['Polygon', 'MultiPolygon']:
                 raise ValueError('only Polygon or MultiPolygon is supported for the aoi')
             self.aoi_name = str(row['name']) if 'name' in row else str(i)
+
+            # if self.aoi_name != '346872':
+            #     continue
             # print(type(row['name']), row['name'])
             # if self.aoi_name != '338850':
             #     continue
-            # if i<=1500 or i>1600:
+            # if i<=180 or i>210:
             #     continue
             print('Start for AOI:', self.aoi_name)
 
@@ -260,9 +263,9 @@ class GEEDownloader(Downloader):
         func_snowice = getattr(gee, f'get_{prefix}snowice')
         for _date in self.date_downloading:
             # print(_date.month)
-            # if _date.month < 6 or _date.month>10:
-            #     print(_date.month, '-------skip')
-            #     continue
+            if _date.month < 5 or _date.month>11:
+                print(_date.month, '-------skip')
+                continue
             ## 1. obtain cloud percentage
 
             # cld_percentage = self.get_s2_cloudpercentage(s_d='2018-06-10',e_d='2018-06-11')
