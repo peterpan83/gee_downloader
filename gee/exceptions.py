@@ -13,6 +13,10 @@ class DownloadDirIncompleteError(Exception):
     def __init__(self, download_dir):
         self.msg = f"No tif files found, not a complete download dir: {download_dir} "
         super().__init__(self.msg)
+class NoGoodTifsError(Exception):
+    def __init__(self, download_dir):
+        self.msg = f"No good tif files found, check download dir: {download_dir} "
+        super().__init__(self.msg)
 
 
 class NoEEIntersectionBandsError(Exception):

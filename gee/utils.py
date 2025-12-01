@@ -12,7 +12,7 @@ from rasterio.transform import Affine
 from shapely.geometry import MultiPolygon
 
 from utils import merge_tifs, mosaic_tifs
-from .exceptions import DownloadDirIncompleteError, NoEEIntersectionBandsError, OldFormat, GsutilError
+from .exceptions import DownloadDirIncompleteError,NoGoodTifsError, NoEEIntersectionBandsError, OldFormat, GsutilError
 
 import logging
 
@@ -175,6 +175,8 @@ def merge_download_dir(download_dir,
 
     if ret == 1 and remove_temp:
         shutil.rmtree(download_dir)
+    if ret == -1:  ## no good tifs found in the temp dir, and it casue the failure of merging
+        raise NoGoodTifsError(download_dir)
     return dst_crs
 
 

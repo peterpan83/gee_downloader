@@ -120,7 +120,6 @@ def merge_tifs(tif_files,
     if bandnames is not None:
         bandnames_c = bandnames.copy()
     src_files_to_mosaic = []
-    file_size = []
     dst_crs_ret = dst_crs
     for i, tif in enumerate(tif_files[::-1]):
         src = rasterio.open(tif, 'r')
@@ -136,14 +135,15 @@ def merge_tifs(tif_files,
         src_files_to_mosaic.append(reproj_src)
 
     badfile = True
-    while badfile:
+    while badfile and len(src_files_to_mosaic)>0:
         try:
             mosaic, out_trans = merge(src_files_to_mosaic)
         except Exception as error:
-            print(error)
             src_files_to_mosaic.pop(-1)  ## remove the files with the smallest size
         else:
             badfile = False
+    if len(src_files_to_mosaic) == 0:
+        return -1, None
 
     out_meta = src.meta.copy()
     # print(out_meta)
