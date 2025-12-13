@@ -1,5 +1,7 @@
 import os
 import pickle
+import sys
+
 import requests
 import glob
 import shutil
@@ -195,6 +197,18 @@ def merge_download_dir_obsgeo(func_obsgeo, download_dir,
     for pickle_file in info_pickels:
         try:
             sza, vza, phi, transform_60,epsg_crs = func_obsgeo(pickle_file)
+            # meta = {"driver": "GTiff",
+            #  "height": sza.shape[0],
+            #  "width": sza.shape[1],
+            #  "transform": transform_60,
+            #  "count": 1,
+            #  "crs": epsg_crs,
+            # "dtype": rasterio.float32
+            #  }
+            # with rasterio.open(pickle_file.replace('_info.pickle', '_sza_60.tif'), 'w', **meta) as src:
+            #     src.write(sza, 1)
+
+
         except OldFormat as e:
             print(e)
             continue
@@ -243,19 +257,39 @@ def merge_download_dir_obsgeo(func_obsgeo, download_dir,
 
         ## extend the extent by adding two pixels 120m for the interpolation after
         i_col, i_row = ~transform_60*(ulx_img-120, uly_img+120)
-        i_col, i_row = max(int(np.round(i_col)), 0), max(int(np.round(i_row)), 0)
+        # i_col, i_row = max(int(np.round(i_col)), 0), max(int(np.round(i_row)), 0)
+
+        i_col, i_row = int(np.round(i_col)), int(np.round(i_row))
 
         ncols_img_60 = int(np.ceil(ncols_img * resolution_img /60.0))+2
         nrows_img_60 = int(np.ceil(nrows_img * resolution_img /60.0))+2
-        e_col,e_row = min(ncols_img_60+i_col, sza.shape[1]-1),  min(nrows_img_60+i_row, sza.shape[0]-1)
+        # e_col,e_row = min(ncols_img_60+i_col, sza.shape[1]-1),  min(nrows_img_60+i_row, sza.shape[0]-1)
+
+        e_col, e_row = ncols_img_60 + i_col, nrows_img_60 + i_row
 
         ### interpolate to the resolution of the image
 
-        if e_row >= sza.shape[0]-2 or e_col >= sza.shape[1]-2:
-            continue
-        sza_img = zoom(sza[i_row: e_row, i_col:e_col], 60.0/resolution_img)
-        vza_img = zoom(vza[i_row: e_row, i_col:e_col], 60.0 / resolution_img)
-        phi_img = zoom(phi[i_row: e_row, i_col:e_col], 60.0 / resolution_img)
+        # if e_row >= sza.shape[0]-2 or e_col >= sza.shape[1]-2:
+        #     continue
+
+        pad_above, pad_left, pad_bottom, pad_right = min(0, i_row), min(0, i_col), max(e_row - sza.shape[0], 0), max(e_col- sza.shape[1], 0)
+        pad_width = max(np.abs(pad_above), np.abs(pad_left), np.abs(pad_bottom), np.abs(pad_right))
+
+
+
+        sza = np.pad(sza, pad_width=pad_width, mode='edge')[i_row + pad_width: e_row + pad_width, i_col + pad_width:e_col + pad_width]
+        vza = np.pad(vza, pad_width=pad_width, mode='edge')[i_row+pad_width: e_row+pad_width, i_col+pad_width:e_col+pad_width]
+        phi = np.pad(phi, pad_width=pad_width, mode='edge')[i_row+pad_width: e_row+pad_width, i_col+pad_width:e_col+pad_width]
+
+
+        sza_img = zoom(sza, 60.0/resolution_img, mode='nearest')
+        # sza_img[(sza_img>sza.max()) | (sza_img<sza.min())] = 0
+
+        vza_img = zoom(vza, 60.0 / resolution_img, mode='nearest')
+        # vza_img[(vza_img>vza.max()) | (vza_img<vza.min())] = 0
+
+        phi_img = zoom(phi, 60.0 / resolution_img, mode='nearest')
+        # phi_img[(phi_img>phi.max()) | (phi_img<phi.min())] = 0
 
         ulx_new, uly_new = transform_60*(i_col, i_row)
 
@@ -268,6 +302,19 @@ def merge_download_dir_obsgeo(func_obsgeo, download_dir,
         sza_img_new = np.pad(sza_img, pad_width=2, mode='edge')[i_row_img+2: i_row_img+nrows_img+2, i_col_img+2:i_col_img+ncols_img+2]
         vza_img_new = np.pad(vza_img, pad_width=2, mode='edge')[i_row_img+2: i_row_img + nrows_img+2, i_col_img+2:i_col_img + ncols_img+2]
         phi_img_new = np.pad(phi_img, pad_width=2, mode='edge')[i_row_img+2: i_row_img + nrows_img+2, i_col_img+2:i_col_img + ncols_img+2]
+
+        # meta = {"driver": "GTiff",
+        #         "height": sza_img_new.shape[0],
+        #         "width": sza_img_new.shape[1],
+        #         "transform": transform_img,
+        #         "count": 1,
+        #         "crs": epsg_crs,
+        #         "dtype": rasterio.float32
+        #         }
+        # with rasterio.open(pickle_file.replace('_info.pickle', '_sza_aoi_10.tif'), 'w', **meta) as src:
+        #     src.write(sza_img_new, 1)
+
+
 
         if sza_img_new.shape != (mosaic[0].shape[0], mosaic[0].shape[1]):
             continue
