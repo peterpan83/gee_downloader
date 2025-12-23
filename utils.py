@@ -78,6 +78,38 @@ def reproject_raster_dataset(src, dst_crs):
         return memfile.open()
 
 
+def reproject_raster(src, dst_crs):
+    src_meta = src.meta.copy()
+
+    transform, width, height = calculate_default_transform(src.crs, dst_crs, src.width, src.height, *src.bounds)
+
+    src_meta.update({
+        'crs': dst_crs,
+        'transform': transform,
+        'width': width,
+        'height': height
+    })
+
+    reprojected_array = np.empty((src.count, height, width), dtype=np.float32)
+
+    for i in range(1, src.count + 1):
+        reproject(
+            source=rasterio.band(src, i),
+            destination=reprojected_array[i - 1],
+            src_transform=src.transform,
+            src_crs=src.crs,
+            dst_transform=transform,
+            dst_crs=dst_crs,
+            resampling=Resampling.nearest
+        )
+
+    memfile = MemoryFile()
+    with memfile.open(**src_meta) as dest:
+        dest.write(reprojected_array)
+
+    return memfile
+
+
 def mosaic_tifs(tif_files, dst_crs=None):
     '''
     mosia tifs , only return the array, transform and crs
@@ -96,8 +128,8 @@ def mosaic_tifs(tif_files, dst_crs=None):
         if crs == dst_crs_ret:
             src_files_to_mosaic.append(src)
             continue
-        reproj_src = reproject_raster_dataset(src, dst_crs=dst_crs_ret)
-        src_files_to_mosaic.append(reproj_src)
+        reproj_src = reproject_raster(src, dst_crs=dst_crs_ret)
+        src_files_to_mosaic.append(reproj_src.open())
     mosaic, out_trans = merge(src_files_to_mosaic)
     return mosaic, out_trans,dst_crs_ret
 
@@ -131,14 +163,15 @@ def merge_tifs(tif_files,
         if crs == dst_crs_ret:
             src_files_to_mosaic.append(src)
             continue
-        reproj_src = reproject_raster_dataset(src, dst_crs=dst_crs_ret)
-        src_files_to_mosaic.append(reproj_src)
+        reproj_src = reproject_raster(src, dst_crs=dst_crs_ret)
+        src_files_to_mosaic.append(reproj_src.open())
 
     badfile = True
     while badfile and len(src_files_to_mosaic)>0:
         try:
             mosaic, out_trans = merge(src_files_to_mosaic)
         except Exception as error:
+            print(error)
             src_files_to_mosaic.pop(-1)  ## remove the files with the smallest size
         else:
             badfile = False

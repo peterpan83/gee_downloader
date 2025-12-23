@@ -166,7 +166,7 @@ def merge_download_dir(download_dir,
     tifs = [_ for _ in glob.glob(os.path.join(download_dir, f'*_*_*.tif')) if(os.path.getsize(_) / 1024.0) > (1.0*len(bandnames)) ]
     if len(tifs) < 1:
         raise DownloadDirIncompleteError(download_dir)
-
+    # dst_crs = 'EPSG:4326'
     ret, dst_crs = merge_tifs(tifs, output_f, descriptions=':'.join(descriptions),
                          descriptions_meta=descriptions_meta,
                               bandnames=bandnames,
