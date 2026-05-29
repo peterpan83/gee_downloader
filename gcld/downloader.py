@@ -1,5 +1,6 @@
 import os, glob, sys
 import shutil
+import subprocess
 
 import pandas as pd
 import rasterio
@@ -13,9 +14,9 @@ class GCLDDownloader(Downloader):
 
     def __init__(self, **config):
         super().__init__(**config)
-        print("GCLDDownloader initialized")
 
-    import polars as pl
+        self.remove_downloaded = self._config_dic['global'].get('remove_downloaded', False)
+        print("GCLDDownloader initialized")
 
     def build_name_to_productids(self, df):
         """
@@ -61,7 +62,7 @@ class GCLDDownloader(Downloader):
 
     def download(self, url):
         try:
-            os.system("gsutil -m cp -r {} {}".format(url, self._temp_dir))
+            subprocess.run(["gsutil", "-m", "cp", "-r", url, self._temp_dir], check=True)
         except Exception as e:
             print(f"Error downloading from {url}: {e}")
             raise e
@@ -74,7 +75,7 @@ class GCLDDownloader(Downloader):
             sys.path.append(self._config_dic['global']['acolite_dir'])
             import acolite as ac
 
-        from gcld.gen_toa import gen_toa
+        from .gen_toa import gen_toa
 
         bounds = self.aoi_geo.bounds
 
@@ -120,33 +121,19 @@ class GCLDDownloader(Downloader):
                 os.makedirs(self._temp_dir, exist_ok=True)
                 print(f"Downloading data for sensor {sensor} and date {date}")
                 date_str = pendulum.from_format(str(date), "YYYYMMDD").to_date_string()
-                # Implement download logic here using sensor, date_str, and other config parameters.
-                # For demonstration, we'll just emit a message.
 
                 df_filter = self.date_df[(self.date_df['date'] == date) & (self.date_df['sensor'] == sensor)]
                 self._productid_to_names_dic = self.build_productid_to_names(df_filter)
                 self._name_to_productids_dic = self.build_name_to_productids(df_filter)
 
-                # for product_id, names in self._productid_to_names_dic.items():
-                #     print(f"Product ID: {product_id}, Names: {names}")
-                #
-                #     product_id = get_prodid_essentials(product_id)
-                #
-                #     ### download if not already exists
-                #     if len(glob.glob(os.path.join(self._temp_dir, f'{product_id}*'))) < 1:
-                #         url = search_url_func(product_id)
-                #         self.download(url)
-
                 print(f"Data for sensor {sensor} and date {date_str} downloaded successfully.")
                 for name, product_ids in self._name_to_productids_dic.items():
-                    # print(f"Name: {name}, Product IDs: {product_ids}")
                     self.aoi_name = name
                     self.aoi_geo = self.proj_gdf[self.proj_gdf['name'] == name]['geometry'].values[0]
 
                     if self.aoi_geo.type not in ['Polygon', 'MultiPolygon']:
                         raise ValueError('only Polygon or MultiPolygon is supported for the aoi')
 
-                    # print(self.aoi_geo.bounds)
                     _sensor = str.upper(list(product_ids)[0].split('_')[0])
                     save_dir = os.path.join(self.save_dir, asset_savedir, anynom, str(self.aoi_name), str(year))
                     toa_f = os.path.join(save_dir, f'{_sensor}_L1TOA_{date}_{self.aoi_name}_10m.tif')
@@ -182,3 +169,8 @@ class GCLDDownloader(Downloader):
                         os.makedirs(save_l1rgb_dir, exist_ok=True)
                         l1rgb_f = os.path.join(save_l1rgb_dir, os.path.basename(rgb_f).replace('_L1TOA_', '_L1RGB_'))
                         shutil.move(rgb_f, l1rgb_f)
+
+
+                ## remove the temp dir after processing all AOIs for the date
+                if self.remove_downloaded:
+                    shutil.rmtree(self._temp_dir)

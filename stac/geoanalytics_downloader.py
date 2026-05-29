@@ -311,8 +311,6 @@ class GeoanalyticsDownloader:
 
                 # Get polygon name from 'name' field or use index
                 polygon_name = str(row['name']) if 'name' in row else str(idx)
-                if polygon_name != '347608':
-                    continue
 
                 print(f"\n{'=' * 60}")
                 print(f"Processing AOI: {polygon_name} ({idx + 1}/{len(aoi_gdf)})")

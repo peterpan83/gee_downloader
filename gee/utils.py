@@ -143,7 +143,7 @@ def download_images_roi(images: ee.ImageCollection, grids, save_dir, bands=None,
                 fix_raster_upsidedown(o_f,output_tif=o_f)
             except Exception as e:
                 print('fix_raster_upsidedown error',e)
-                os.system('rm {}'.format(o_f))
+                os.remove(o_f)
                 continue
 
 

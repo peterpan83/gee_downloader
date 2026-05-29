@@ -1,4 +1,5 @@
 import os,sys, glob
+import subprocess
 import numpy as np
 import pickle
 
@@ -502,7 +503,7 @@ def get_obsgeo(pickle_file):
         # manifest_safe_url = f'{base_url}/manifest.safe'
         # mtd_msil1c_xml_url = f'{base_url}/MTD_MSIL1C.xml'
         mtd_tl_xml_url = f'{base_url}/GRANULE/{granule_id}/MTD_TL.xml'
-        os.system(f'gsutil -m cp -r {mtd_tl_xml_url} {mtd_tl_xml_file}')
+        subprocess.run(["gsutil", "-m", "cp", "-r", mtd_tl_xml_url, mtd_tl_xml_file], check=True)
         if not os.path.exists(mtd_tl_xml_file):
             raise GsutilError(f'failed: gsutil -m cp -r {mtd_tl_xml_url} {mtd_tl_xml_file}')
 

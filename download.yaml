@@ -1,6 +1,6 @@
 GLOBAL:
-  ## STAC or GEE or GCLD
-  backend: gee
+  ## stac or gee or gcld or cdse
+  backend: gcld
   aoi: /home/yan/WorkSpace/projects/DFO-IZ-MAPPING/src/crx_experiment/output_grid/isea3h_12_aoi_intertidal.shp
   start_date: '2025-09-20'
   end_date: '2025-10-20'
@@ -32,8 +32,18 @@ GEE:
 GCLD:
   ## using a csv file to define the date ranges for each cell, the csv file should contain columns: name, date (yyyymmdd), product_ids (comma separated)
   date_csv: /home/yan/WorkSpace/projects/DFO-IZ-MAPPING/data_test_downloader/good_images.csv  #this is mandate, and it will overwrite the start_date and end_date in GLOBAL
-  remove_downloaded: true   #remove the downloaded files from google cloud after processing, only keep the final outputs
+  remove_downloaded: false   #remove the downloaded files from google cloud after processing, only keep the final outputs
   acolite_dir: /home/yan/WorkSpace/open_source/acolite_origin/acolite #require acolite to generate TOA reflectance
+
+## download Sentinel-3 products from the Copernicus Data Space Ecosystem (CDSE) OData API
+CDSE:
+  cdse_username: your_cdse_email@example.com   # CDSE account email
+  cdse_password: your_cdse_password            # CDSE account password
+  ## optional: a csv with columns name, date (yyyymmdd), product_ids (CDSE UUIDs, comma-separated)
+  ## if omitted, products are discovered automatically by AOI + date range via the catalog search
+  #date_csv: /path/to/good_images_s3.csv
+  remove_downloaded: false   # remove extracted product folders after TOA generation
+  acolite_dir: /home/yan/WorkSpace/open_source/acolite_origin/acolite
 
 
 ASSETS:
@@ -93,11 +103,13 @@ ASSETS:
   - S3_L1TOA:
      stac_source: NONE
      gee_source: COPERNICUS/S3/OLCI
-     include_bands: B1,B2,B3,B4,B5,B6,B7,B8,B8A,B9,B10,B11,B12
-     resolution: 10
+     cdse_source: SENTINEL-3             # CDSE collection name
+     cdse_product_type: ol_1_efr         # ol_1_efr | ol_1_err | sl_1_rbt | sy_2_syn
+     include_bands: Oa01,Oa02,Oa03,Oa04,Oa05,Oa06,Oa07,Oa08,Oa09,Oa10,Oa11,Oa12,Oa13,Oa14,Oa15,Oa16,Oa17,Oa18,Oa19,Oa20,Oa21
+     resolution: 300
      save_dir: L1
-     anonym: s2_msi
-     obs_geo_pixel: True
+     anonym: s3_olci
+     obs_geo_pixel: true
 
   - S1_L1C:
       stac_source: NONE
@@ -106,8 +118,5 @@ ASSETS:
       resolution: 10
       anonym: s1_sar
       save_dir: L1
-
-
-
 
 

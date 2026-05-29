@@ -5,7 +5,7 @@ from rasterio.warp import reproject,calculate_default_transform,Resampling
 from rasterio.io import MemoryFile
 from rasterio.merge import merge
 
-def covert_config_to_dic(config:configparser.ConfigParser):
+def convert_config_to_dict(config:configparser.ConfigParser):
     '''
     convert ConfigParser to dict
     :param config:
@@ -250,7 +250,7 @@ def load_config_file(config_path: str) -> dict:
         import configparser
         cfg = configparser.ConfigParser()
         cfg.read(config_path)
-        return covert_config_to_dic(cfg)
+        return convert_config_to_dict(cfg)
 
     if ext in ('.yml', '.yaml'):
         try:
@@ -302,8 +302,8 @@ def convert_yaml_to_internal_config(y: dict) -> dict:
         raise ValueError('YAML must contain GLOBAL: {...}')
 
     backend = str(global_y.get('backend', 'gee')).strip().lower()
-    if backend not in ('gee', 'stac', 'gcld'):
-        raise ValueError(f"GLOBAL.backend must be 'gee' or 'stac' (got: {backend})")
+    if backend not in ('gee', 'stac', 'gcld', 'cdse'):
+        raise ValueError(f"GLOBAL.backend must be one of 'gee', 'stac', 'gcld', 'cdse' (got: {backend})")
 
     # stac_y = y.get('STAC') or y.get('stac') or {}
     # gee_y = y.get('GEE') or y.get('gee') or {}

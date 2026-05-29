@@ -5,7 +5,7 @@ import datetime
 from pathlib import Path
 
 from downloader import Downloader
-from stac.geoanalytics_downloader import GeoanalyticsDownloader
+from .geoanalytics_downloader import GeoanalyticsDownloader
 
 def _upper_section(s: str) -> str:
     return s.upper()

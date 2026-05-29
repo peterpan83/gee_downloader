@@ -37,13 +37,16 @@ class App(cli.Application):
 
         backend = str.lower(self._config_dic.get('global', {}).get('backend', 'gee') or 'gee')
         if backend == 'stac':
-            from stac_downloader import STACDownloader
+            from stac import STACDownloader
             downloader = STACDownloader(config_path=self._config_f, **self._config_dic)
         elif backend == 'gcld':
-            from gcld_downloader import GCLDDownloader
+            from gcld import GCLDDownloader
             downloader = GCLDDownloader(**self._config_dic)
+        elif backend == 'cdse':
+            from cdse import CDSEDownloader
+            downloader = CDSEDownloader(**self._config_dic)
         else:
-            from gee_downloader import GEEDownloader
+            from gee import GEEDownloader
             downloader = GEEDownloader(**self._config_dic)
 
         ext = os.path.splitext(self._config_f)[-1]

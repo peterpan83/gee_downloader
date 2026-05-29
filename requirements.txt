@@ -1,0 +1,15 @@
+rasterio>=1.4
+geopandas>=1.0
+pendulum>=3.0
+plumbum>=1.9
+earthengine-api>=1.5
+PyYAML>=6.0
+pandas>=2.0
+scipy>=1.10
+tqdm>=4.0
+netCDF4>=1.7
+pyproj>=3.6
+requests>=2.28
+# Cloud masking (CDSE/S3 backend): install from PyPI then run:
+#   <SNAP_install_dir>/bin/snappy-conf <python_executable>
+esa_snappy>=1.1
