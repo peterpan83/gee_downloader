@@ -58,9 +58,9 @@ class CDSEDownloader(Downloader):
 
         self.remove_downloaded = config["global"].get("remove_downloaded", False)
 
-        # Cloud masking (IdePix via esa_snappy + JRC GSW water mask)
-        self.cloud_masking = str(config["global"].get("cloud_masking", "false")).lower() == "true"
-        self.cloud_buffer   = int(config["global"].get("cloud_buffer_size", 2))
+        # Cloud masking (IdePix via esa_snappy + GPWv411 water mask)
+        self.cloud_masking     = str(config["global"].get("cloud_masking", "false")).lower() == "true"
+        self.cloud_buffer_size = int(config["global"].get("cloud_buffer_size", 2))
 
         self._access_token = None
         self._token_expiry = None
@@ -218,8 +218,9 @@ class CDSEDownloader(Downloader):
             aoi_name=self.aoi_name,
             remove_temp=True,
             cloud_masking=self.cloud_masking,
-            cloud_buffer=self.cloud_buffer,
-            buffer_size=self.cloud_buffer,
+            cloud_buffer=True,
+            buffer_size=self.cloud_buffer_size,
+            csv_dir=self.save_dir,
         )
 
     # ------------------------------------------------------------------

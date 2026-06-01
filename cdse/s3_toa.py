@@ -416,7 +416,7 @@ def _append_classification_band(
         dst.update_tags(
             ns='classification',
             cloud_masking_applied=str(cloud_mask is not None),
-            water_mask_source='JRC/GSW1_4/GlobalSurfaceWater',
+            water_mask_source='CIESIN/GPWv411/GPW_Water_Mask',
         )
 
     os.replace(tmp_f, toa_f)
@@ -445,11 +445,11 @@ def _append_classification_band(
 
 
 def _write_scene_csv(csv_path: str, row: dict):
-    """Append one row to the scene-info CSV, creating it with a header if needed."""
+    """Append one row to the scene-info CSV (semicolon-delimited), creating it with a header if needed."""
     import csv
     file_exists = os.path.exists(csv_path)
     with open(csv_path, 'a', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=list(row.keys()))
+        writer = csv.DictWriter(f, fieldnames=list(row.keys()), delimiter=';')
         if not file_exists:
             writer.writeheader()
         writer.writerow(row)
@@ -464,6 +464,7 @@ def gen_s3_toa(
     cloud_masking: bool = False,
     cloud_buffer: bool = True,
     buffer_size: int = 2,
+    csv_dir: str = None,
 ) -> str:
     """
     End-to-end: downloaded .SEN3 folders → projected, AOI-cropped GeoTIFF.
@@ -480,6 +481,7 @@ def gen_s3_toa(
     cloud_masking : if True, run IdePix and append classification band
     cloud_buffer  : IdePix cloud buffer flag
     buffer_size   : IdePix cloud buffer radius in pixels
+    csv_dir       : directory for download_info_s3.csv; defaults to output_dir
 
     Returns
     -------
@@ -522,12 +524,14 @@ def gen_s3_toa(
         'filename':        os.path.basename(toa_f),
         'satellite':       sat_key,
         'sensing_time':    sensing_time,
-        'scenes':          ';'.join(os.path.basename(f) for f in input_files),
+        'scenes':          '\n'.join(os.path.basename(f) for f in input_files),
         'cloud_pct_total': stats['cloud_pct_total'],
         'cloud_pct_water': stats['cloud_pct_water'],
         'water_pct':       stats['water_pct'],
         'processed_utc':   datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'),
     }
-    _write_scene_csv(os.path.join(output_dir, 'download_info.csv'), csv_row)
+    csv_dir_eff = csv_dir if csv_dir is not None else output_dir
+    os.makedirs(csv_dir_eff, exist_ok=True)
+    _write_scene_csv(os.path.join(csv_dir_eff, 'download_info_s3.csv'), csv_row)
 
     return toa_f
