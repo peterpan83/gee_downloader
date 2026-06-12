@@ -169,18 +169,18 @@ conda install -c conda-forge proj pyproj --update-deps
 
 **Cause**: The Cloud Top Pressure (CTP) sub-operator inside IdePix uses a TensorFlow neural network. The TensorFlow native library bundled with SNAP is compiled with **AVX2** instructions. CPUs older than Intel Haswell (pre-2013, e.g. Sandy Bridge Xeon E7-4870) support only AVX, not AVX2, so the JVM crashes immediately when TensorFlow is loaded.
 
-**Fix**: CTP is not required for cloud/cloud-shadow masking. Disable it by passing `compute_ctp=False` (the default) to `run_idepix_olci()` or `build_cloud_mask()`:
+**Fix**: The `IdepixOlciOp` operator calls CTP internally from `preProcess()` regardless of any GPF parameter — it cannot be disabled via the Python API. The only safe workaround is to skip IdePix entirely on pre-AVX2 machines and fall back to native OLCI quality flags.
 
-```python
-from cdse.s3_cloud_mask import build_cloud_mask
+This is handled automatically: `build_cloud_mask()` reads `/proc/cpuinfo` at runtime and bypasses IdePix (and therefore TensorFlow) when AVX2 is not listed in the CPU flags. No code change is needed on your end — just pull the latest version and re-run.
 
-mask = build_cloud_mask(
-    sen3_folders, crs, transform, height, width,
-    compute_ctp=False,   # default — safe on all CPUs
-)
+To confirm the fallback is active, look for this warning in the output:
+
+```
+RuntimeWarning: CPU does not support AVX2 — IdePix skipped to avoid a fatal JVM crash
+(libtensorflow_framework.so requires AVX2). Falling back to native OLCI quality flags.
 ```
 
-CTP disabling is already the default in this codebase. If you previously forced `compute_ctp=True`, revert that to avoid the crash on older hardware.
+The native flag fallback uses OLCI `qualityFlags.nc` bits (CLOUD bit 27, CLOUD_AMBIGUOUS bit 26, CLOUD_SHADOW bit 14) and produces results slightly coarser than IdePix but requires no SNAP or TensorFlow.
 
 ### Multiple SNAP installations
 

@@ -21,6 +21,18 @@ from rasterio.crs import CRS
 from rasterio.transform import Affine
 from scipy.ndimage import binary_dilation, distance_transform_edt
 
+def _cpu_has_avx2() -> bool:
+    """Return True if the host CPU advertises AVX2 support via /proc/cpuinfo."""
+    try:
+        with open('/proc/cpuinfo', 'r') as f:
+            for line in f:
+                if line.startswith('flags') and 'avx2' in line.split():
+                    return True
+    except OSError:
+        pass
+    return False
+
+
 # IdePix pixel_classif_flags bit positions
 _IDEPIX_CLOUD_SURE      = 1 << 1
 _IDEPIX_CLOUD_AMBIGUOUS = 1 << 2
@@ -200,30 +212,40 @@ def build_cloud_mask(
     np.ndarray (h, w) bool, or None if esa_snappy is not installed.
     """
     use_idepix = False
-    try:
-        import esa_snappy
-        GPF = esa_snappy.jpy.get_type('org.esa.snap.core.gpf.GPF')
-        registry = GPF.getDefaultInstance().getOperatorSpiRegistry()
-        if registry.getOperatorSpi('Idepix.Olci') is not None:
-            use_idepix = True
-        else:
-            import warnings
-            warnings.warn(
-                'Idepix.Olci operator not found in SNAP (plugin not installed) — '
-                'falling back to native OLCI quality flags. '
-                'Install the IdePix plugin via SNAP > Tools > Plugins.',
-                RuntimeWarning,
-                stacklevel=2,
-            )
-    except ImportError:
+    if not _cpu_has_avx2():
         import warnings
         warnings.warn(
-            'esa_snappy not available — falling back to native OLCI quality flags '
-            '(CLOUD bit 27, CLOUD_AMBIGUOUS bit 26, CLOUD_SHADOW bit 14). '
-            'Install SNAP and run snappy-conf for IdePix-quality masking.',
+            'CPU does not support AVX2 — IdePix skipped to avoid a fatal JVM crash '
+            '(libtensorflow_framework.so requires AVX2). '
+            'Falling back to native OLCI quality flags.',
             RuntimeWarning,
             stacklevel=2,
         )
+    else:
+        try:
+            import esa_snappy
+            GPF = esa_snappy.jpy.get_type('org.esa.snap.core.gpf.GPF')
+            registry = GPF.getDefaultInstance().getOperatorSpiRegistry()
+            if registry.getOperatorSpi('Idepix.Olci') is not None:
+                use_idepix = True
+            else:
+                import warnings
+                warnings.warn(
+                    'Idepix.Olci operator not found in SNAP (plugin not installed) — '
+                    'falling back to native OLCI quality flags. '
+                    'Install the IdePix plugin via SNAP > Tools > Plugins.',
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+        except ImportError:
+            import warnings
+            warnings.warn(
+                'esa_snappy not available — falling back to native OLCI quality flags '
+                '(CLOUD bit 27, CLOUD_AMBIGUOUS bit 26, CLOUD_SHADOW bit 14). '
+                'Install SNAP and run snappy-conf for IdePix-quality masking.',
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
     combined = np.zeros((dst_height, dst_width), dtype=bool)
     for folder in sen3_folders:
