@@ -61,7 +61,7 @@ class CDSEDownloader(Downloader):
         # Cloud masking (IdePix via esa_snappy + GPWv411 water mask)
         self.cloud_masking      = str(config["global"].get("cloud_masking", "false")).lower() == "true"
         self.cloud_buffer_size  = int(config["global"].get("cloud_buffer_size", 2))
-        self.cloud_mask_method  = str(cdse_cfg.get("cloud_mask_method", "idepix")).lower()
+        self.cloud_mask_method  = str(config["global"].get("cloud_mask_method", "idepix")).lower()
 
         self._access_token = None
         self._token_expiry = None
