@@ -77,7 +77,36 @@ def reproject_raster_dataset(src, dst_crs):
         #     yield dataset  # Note yield not return as we're a contextmanager
         return memfile.open()
 
+def reproject_raster_dataset_v2(src, dst_crs):
+    src_meta = src.meta.copy()
 
+    transform, width, height = calculate_default_transform(src.crs, dst_crs, src.width, src.height, *src.bounds)
+
+    src_meta.update({
+        'crs': dst_crs,
+        'transform': transform,
+        'width': width,
+        'height': height
+    })
+
+    reprojected_array = np.empty((src.count, height, width), dtype=np.float32)
+
+    for i in range(1, src.count + 1):
+        reproject(
+            source=rasterio.band(src, i),
+            destination=reprojected_array[i - 1],
+            src_transform=src.transform,
+            src_crs=src.crs,
+            dst_transform=transform,
+            dst_crs=dst_crs,
+            resampling=Resampling.nearest
+        )
+
+    memfile = MemoryFile()
+    with memfile.open(**src_meta) as dest:
+        dest.write(reprojected_array)
+
+    return memfile
 def reproject_raster(src, dst_crs):
     src_meta = src.meta.copy()
 

@@ -37,9 +37,17 @@ def run_idepix_olci(
     l1b_path: str,
     cloud_buffer: bool = True,
     buffer_size: int = 2,
+    compute_ctp: bool = False,
 ) -> np.ndarray:
     """
     Run IdePix on an OLCI L1B .SEN3 product.
+
+    Parameters
+    ----------
+    compute_ctp : bool
+        Enable Cloud Top Pressure (CTP) estimation via TensorFlow neural network.
+        Disable on machines with CPUs older than Haswell (pre-AVX2) to avoid a
+        SIGILL crash caused by AVX2 instructions in the bundled TensorFlow library.
 
     Returns
     -------
@@ -56,10 +64,11 @@ def run_idepix_olci(
     product = ProductIO.readProduct(l1b_path)
 
     params = HashMap()
-    params.put('computeCloudBuffer',    JBoolean(cloud_buffer))
-    params.put('cloudBufferSize',       JInteger(buffer_size))
-    params.put('computeCloudShadow',    JBoolean(True))
-    params.put('computeMountainShadow', JBoolean(False))
+    params.put('computeCloudBuffer',      JBoolean(cloud_buffer))
+    params.put('cloudBufferSize',         JInteger(buffer_size))
+    params.put('computeCloudShadow',      JBoolean(True))
+    params.put('computeMountainShadow',   JBoolean(False))
+    params.put('computeCloudTopPressure', JBoolean(compute_ctp))
 
     idepix = GPF.createProduct('Idepix.Olci', params, product)
 
@@ -181,6 +190,7 @@ def build_cloud_mask(
     dst_width: int,
     cloud_buffer: bool = True,
     buffer_size: int = 2,
+    compute_ctp: bool = False,
 ):
     """
     Run IdePix on each .SEN3 granule, project to UTM, mosaic with logical OR.
@@ -221,7 +231,8 @@ def build_cloud_mask(
             if use_idepix:
                 print(f'  IdePix: {os.path.basename(folder)} ...')
                 swath_mask = run_idepix_olci(
-                    folder, cloud_buffer=cloud_buffer, buffer_size=buffer_size
+                    folder, cloud_buffer=cloud_buffer,
+                    buffer_size=buffer_size, compute_ctp=compute_ctp,
                 )
             else:
                 print(f'  Native flags: {os.path.basename(folder)} ...')
