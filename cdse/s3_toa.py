@@ -342,6 +342,7 @@ def _append_classification_band(
     cloud_masking: bool,
     cloud_buffer: bool,
     buffer_size: int,
+    cloud_mask_method: str = 'idepix',
 ) -> dict:
     """
     Append a classification band to an existing TOA GeoTIFF and return scene stats.
@@ -386,6 +387,7 @@ def _append_classification_band(
         cloud_mask = build_cloud_mask(
             sen3_folders, crs, transform, height, width,
             cloud_buffer=cloud_buffer, buffer_size=buffer_size,
+            force_native=(cloud_mask_method == 'native'),
         )
 
     # ---- Build classification band ----
@@ -464,6 +466,7 @@ def gen_s3_toa(
     cloud_masking: bool = False,
     cloud_buffer: bool = True,
     buffer_size: int = 2,
+    cloud_mask_method: str = 'idepix',
     csv_dir: str = None,
 ) -> str:
     """
@@ -471,17 +474,22 @@ def gen_s3_toa(
 
     Parameters
     ----------
-    input_files   : list of .SEN3 folder paths
-    output_dir    : directory where the GeoTIFF is written
-    limit         : [lat_min, lon_min, lat_max, lon_max] in WGS84 —
-                    passed to acolite for scene subsetting AND used to
-                    crop the final GeoTIFF to the AOI bounding box
-    aoi_name      : label embedded in the output filename
-    remove_temp   : delete intermediate acolite NC files after writing GeoTIFF
-    cloud_masking : if True, run IdePix and append classification band
-    cloud_buffer  : IdePix cloud buffer flag
-    buffer_size   : IdePix cloud buffer radius in pixels
-    csv_dir       : directory for download_info_s3.csv; defaults to output_dir
+    input_files       : list of .SEN3 folder paths
+    output_dir        : directory where the GeoTIFF is written
+    limit             : [lat_min, lon_min, lat_max, lon_max] in WGS84 —
+                        passed to acolite for scene subsetting AND used to
+                        crop the final GeoTIFF to the AOI bounding box
+    aoi_name          : label embedded in the output filename
+    remove_temp       : delete intermediate acolite NC files after writing GeoTIFF
+    cloud_masking     : if True, append a classification band (0=clear_land,
+                        1=clear_water, 2=cloud_land, 3=cloud_water, 255=invalid)
+    cloud_buffer      : IdePix cloud buffer flag (ignored for native method)
+    buffer_size       : IdePix cloud buffer radius in pixels (ignored for native method)
+    cloud_mask_method : 'idepix' (default) — use esa_snappy/IdePix with automatic
+                        fallback to native flags when AVX2 is absent or esa_snappy
+                        is not installed; 'native' — always use native OLCI
+                        qualityFlags.nc bits (safe on all CPUs, no SNAP needed)
+    csv_dir           : directory for download_info_s3.csv; defaults to output_dir
 
     Returns
     -------
@@ -514,6 +522,7 @@ def gen_s3_toa(
         cloud_masking=cloud_masking,
         cloud_buffer=cloud_buffer,
         buffer_size=buffer_size,
+        cloud_mask_method=cloud_mask_method,
     )
 
     # ---- Write scene CSV ----

@@ -203,6 +203,7 @@ def build_cloud_mask(
     cloud_buffer: bool = True,
     buffer_size: int = 2,
     compute_ctp: bool = False,
+    force_native: bool = False,
 ):
     """
     Run IdePix on each .SEN3 granule, project to UTM, mosaic with logical OR.
@@ -212,7 +213,15 @@ def build_cloud_mask(
     np.ndarray (h, w) bool, or None if esa_snappy is not installed.
     """
     use_idepix = False
-    if not _cpu_has_avx2():
+    if force_native:
+        import warnings
+        warnings.warn(
+            'cloud_mask_method=native: using native OLCI quality flags '
+            '(CLOUD bit 27, CLOUD_AMBIGUOUS bit 26, CLOUD_SHADOW bit 14).',
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    elif not _cpu_has_avx2():
         import warnings
         warnings.warn(
             'CPU does not support AVX2 — IdePix skipped to avoid a fatal JVM crash '

@@ -44,6 +44,12 @@ CDSE:
   #date_csv: /path/to/good_images_s3.csv
   remove_downloaded: false   # remove extracted product folders after TOA generation
   acolite_dir: /home/yan/WorkSpace/open_source/acolite_origin/acolite
+  ## cloud_mask_method controls how the classification band is built (requires cloud_masking: true in GLOBAL)
+  ##   idepix  — use ESA SNAP IdePix via esa_snappy; auto-falls back to native on pre-AVX2 CPUs (default)
+  ##   native  — always use native OLCI qualityFlags.nc bits; safe on all CPUs, no SNAP required
+  ## classification band encoding (last band of TOA GeoTIFF):
+  ##   0=clear_land  1=clear_water  2=cloud_land  3=cloud_water  255=invalid
+  cloud_mask_method: idepix
 
 
 ASSETS:
