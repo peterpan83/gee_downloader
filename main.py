@@ -1,5 +1,35 @@
-import os,sys,shutil
-import datetime
+import os, sys
+
+# Must run before any geo import (rasterio/gdal initialise PROJ on import).
+def _apply_proj_data_early():
+    """Read proj_data from the -c config file and set PROJ env vars immediately."""
+    try:
+        argv = sys.argv[1:]
+        if '-c' not in argv:
+            return
+        cfg_path = argv[argv.index('-c') + 1]
+        ext = os.path.splitext(cfg_path)[-1].lower()
+        proj_data = None
+        if ext in ('.yaml', '.yml'):
+            import yaml
+            with open(cfg_path) as f:
+                y = yaml.safe_load(f)
+            proj_data = ((y.get('GLOBAL') or y.get('global')) or {}).get('proj_data')
+        elif ext == '.ini':
+            import configparser as _cp
+            cp = _cp.ConfigParser()
+            cp.read(cfg_path)
+            proj_data = cp.get('GLOBAL', 'proj_data', fallback=None)
+        if proj_data:
+            os.environ['PROJ_DATA'] = proj_data
+            os.environ['PROJ_LIB']  = proj_data
+            print(f"PROJ_DATA set to: {proj_data}")
+    except Exception:
+        pass
+
+_apply_proj_data_early()
+
+import shutil, datetime
 import configparser
 from plumbum import cli
 from plumbum import colors
@@ -29,12 +59,6 @@ class App(cli.Application):
 
 
     def main(self, *args):
-        proj_data = self._config_dic.get('global', {}).get('proj_data')
-        if proj_data:
-            os.environ['PROJ_DATA'] = proj_data
-            os.environ['PROJ_LIB'] = proj_data
-            print(f"PROJ_DATA set to: {proj_data}")
-
         backend = str.lower(self._config_dic.get('global', {}).get('backend', 'gee') or 'gee')
         if backend == 'stac':
             from stac import STACDownloader
