@@ -87,6 +87,28 @@ import rasterio
 
 ---
 
+---
+
+### Fix via config file (recommended)
+
+The cleanest approach is to set `proj_data` in the `GLOBAL` section of your
+`.yaml` config. The downloader applies it before importing any geo library:
+
+```yaml
+GLOBAL:
+  backend: cdse
+  ...
+  proj_data: /path/to/proj/data   # directory containing proj.db
+```
+
+To find the right path for your Python environment:
+
+```bash
+python -c "import pyproj; print(pyproj.datadir.get_data_dir())"
+```
+
+---
+
 ### General rule
 
 Always set `PROJ_DATA` **before** importing `rasterio`, `geopandas`, `pyproj`, or

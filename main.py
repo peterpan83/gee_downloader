@@ -29,11 +29,11 @@ class App(cli.Application):
 
 
     def main(self, *args):
-        # import os, sys
-        # print("python:", sys.executable)
-        # print("PROJ_LIB:", os.environ.get("PROJ_LIB"))
-        # print("GDAL_DATA:", os.environ.get("GDAL_DATA"))
-        # print("CONDA_PREFIX:", os.environ.get("CONDA_PREFIX"))
+        proj_data = self._config_dic.get('global', {}).get('proj_data')
+        if proj_data:
+            os.environ['PROJ_DATA'] = proj_data
+            os.environ['PROJ_LIB'] = proj_data
+            print(f"PROJ_DATA set to: {proj_data}")
 
         backend = str.lower(self._config_dic.get('global', {}).get('backend', 'gee') or 'gee')
         if backend == 'stac':
