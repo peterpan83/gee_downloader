@@ -1,5 +1,6 @@
 import os, glob, sys, zipfile, shutil
 from collections import defaultdict
+from typing import Optional
 
 import pendulum
 import requests
@@ -20,7 +21,7 @@ S3_PRODUCT_TYPE_MAP = {
 PAGE_SIZE = 100
 
 
-def _find_complete_toa(save_dir: str, sat: str, aoi_name: str, t0) -> str | None:
+def _find_complete_toa(save_dir: str, sat: str, aoi_name: str, t0) -> Optional[str]:
     """
     Return the path of an existing TOA GeoTIFF for this pass if it is complete
     (i.e. contains a classification band), otherwise None.
