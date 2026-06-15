@@ -43,7 +43,11 @@ CDSE:
   ## if omitted, products are discovered automatically by AOI + date range via the catalog search
   #date_csv: /path/to/good_images_s3.csv
   remove_downloaded: false   # remove extracted product folders after TOA generation
-  acolite_dir: /home/yan/WorkSpace/open_source/acolite_origin/acolite
+  acolite_dir: /path/to/acolite                # path to the acolite source directory
+  ## cloud masking — appends a classification band to each TOA GeoTIFF
+  ## classification band encoding: 0=clear_land  1=clear_water  2=cloud_land  3=cloud_water  255=invalid
+  cloud_masking: false        # set to true to enable cloud masking
+  cloud_buffer_size: 2        # IdePix cloud buffer radius in pixels (~300 m each)
 
 
 ASSETS:
