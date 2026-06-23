@@ -11,6 +11,10 @@ GLOBAL:
   save_dir: /home/yan/WorkSpace/projects/DFO-IZ-MAPPING/data_test_downloader
   output_mode: local # local or cloud
   output_format: cog # cog or geotiff
+  ## optional: override PROJ_DATA/PROJ_LIB to avoid conflicts with other PROJ installations
+  ## (e.g. SeaDAS). Set to the directory containing proj.db that matches your Python environment.
+  ## Leave commented out if there is no PROJ conflict on this machine.
+  #proj_data: /path/to/proj/data
 
 STAC:
    stac_api: https://earth-search.aws.element84.com/v1
@@ -43,12 +47,14 @@ CDSE:
   ## if omitted, products are discovered automatically by AOI + date range via the catalog search
   #date_csv: /path/to/good_images_s3.csv
   remove_downloaded: false   # remove extracted product folders after TOA generation
-  acolite_dir: /home/yan/WorkSpace/open_source/acolite_origin/acolite
-  ## cloud_mask_method controls how the classification band is built (requires cloud_masking: true in GLOBAL)
+  acolite_dir: /path/to/acolite                # path to the acolite source directory
+  ## cloud masking — appends a classification band to each TOA GeoTIFF
+  ## classification band encoding: 0=clear_land  1=clear_water  2=cloud_land  3=cloud_water  255=invalid
+  cloud_masking: true        # set to true to enable cloud masking
+  cloud_buffer_size: 2        # IdePix cloud buffer radius in pixels (~300 m each)
+  ## cloud_mask_method controls how the classification band is built (requires cloud_masking: true)
   ##   idepix  — use ESA SNAP IdePix via esa_snappy; auto-falls back to native on pre-AVX2 CPUs (default)
   ##   native  — always use native OLCI qualityFlags.nc bits; safe on all CPUs, no SNAP required
-  ## classification band encoding (last band of TOA GeoTIFF):
-  ##   0=clear_land  1=clear_water  2=cloud_land  3=cloud_water  255=invalid
   cloud_mask_method: idepix
 
 
