@@ -81,7 +81,9 @@ class GEEDownloader(Downloader):
                 self.date_downloading = [pendulum.from_format(str(_), 'YYYYMMDD') for _ in self.date_downloading]
 
             else:
-                self.date_downloading = list(pendulum.period(self.start_date, self.end_date).range('days'))
+                self.date_downloading = []
+                for _s, _e in self.date_ranges:
+                    self.date_downloading.extend(pendulum.period(_s, _e).range('days'))
 
 
             self.download_imagecollection()
@@ -321,8 +323,12 @@ class GEEDownloader(Downloader):
             self.__download_imgcoll_assets(date=_date, **config)
 
     def _download_embedding(self, prefix, **config):
-        for _year in range(self.start_date.year, self.end_date.year+1):
+        if self._multi_year_mode:
+            year_list = [_s.year for _s, _e in self.date_ranges]
+        else:
+            year_list = list(range(self.start_date.year, self.end_date.year + 1))
 
+        for _year in year_list:
             s_d, e_d = f'{_year}-01-01', f'{_year+1}-01-01'
             _s_d = str(_year)
 

@@ -19,6 +19,38 @@ INFO_COL_DIC = {
     'embedding':['date','sensor']
 }
 
+def _build_date_ranges(g: dict):
+    """
+    Parse date config and return (ranges, multi_year_mode).
+
+    Two formats:
+      Old: start_date='YYYY-MM-DD', end_date='YYYY-MM-DD'
+           → single (start, end) pair; multi_year_mode=False
+      New: start_year=YYYY, end_year=YYYY,
+           start_date='MM-DD', end_date='MM-DD'
+           → one (start, end) pair per year; multi_year_mode=True
+           Cross-year windows (e.g. 12-01 to 02-28) are handled: end falls in year+1.
+    """
+    if 'start_year' in g and 'end_year' in g:
+        start_md = str(g['start_date'])
+        end_md   = str(g['end_date'])
+        sm, sd = map(int, start_md.split('-'))
+        em, ed = map(int, end_md.split('-'))
+        cross_year = (sm, sd) > (em, ed)
+        ranges = []
+        for year in range(int(g['start_year']), int(g['end_year']) + 1):
+            s = pendulum.from_format(f'{year}-{start_md}', 'YYYY-MM-DD')
+            e_year = year + 1 if cross_year else year
+            e = pendulum.from_format(f'{e_year}-{end_md}', 'YYYY-MM-DD')
+            ranges.append((s, e))
+        return ranges, True
+    elif 'start_date' in g and 'end_date' in g:
+        s = pendulum.from_format(str(g['start_date']), 'YYYY-MM-DD')
+        e = pendulum.from_format(str(g['end_date']), 'YYYY-MM-DD')
+        return [(s, e)], False
+    return [], False
+
+
 class Downloader():
     def __init__(self, **config):
         self._config_dic = config
@@ -55,10 +87,11 @@ class Downloader():
             self.date_df['name'] = self.date_df['name'].astype(str)
             self.date_df['date'] = self.date_df['date'].astype(str)
 
-        self.start_date = pendulum.from_format(self._config_dic['global']['start_date'], 'YYYY-MM-DD') if 'start_date' in self._config_dic['global'] else None
-        self.end_date = pendulum.from_format(self._config_dic['global']['end_date'], 'YYYY-MM-DD') if 'end_date' in self._config_dic['global'] else None
+        self.date_ranges, self._multi_year_mode = _build_date_ranges(self._config_dic['global'])
+        self.start_date = self.date_ranges[0][0] if self.date_ranges else None
+        self.end_date   = self.date_ranges[-1][1] if self.date_ranges else None
 
-        if (self.date_df is None) and ((self.start_date is None) or (self.end_date is None)):
+        if (self.date_df is None) and not self.date_ranges:
             raise Exception('either date_csv or start_date/end_date for downloading is required')
 
         if not os.path.exists(self.save_dir):

@@ -2,8 +2,17 @@ GLOBAL:
   ## stac or gee or gcld or cdse
   backend: gcld
   aoi: /home/yan/WorkSpace/projects/DFO-IZ-MAPPING/src/crx_experiment/output_grid/isea3h_12_aoi_intertidal.shp
-  start_date: '2025-09-20'
-  end_date: '2025-10-20'
+  ## Date range — two formats are supported:
+  ##   Option A (single range): full YYYY-MM-DD dates
+  #start_date: '2025-09-20'
+  #end_date:   '2025-10-20'
+  ##   Option B (multi-year seasonal window): set start_year/end_year + MM-DD dates.
+  ##   Downloads the same seasonal window for each year in [start_year, end_year].
+  ##   Cross-year windows (e.g. 12-01 to 02-28) are handled correctly.
+  start_year: 2020
+  end_year:   2025
+  start_date: '09-20'
+  end_date:   '10-20'
   ## using a csv file to define the date ranges for each cell, the csv file should contain columns: name, date (yyyymmdd)
   #date_csv = /mnt/0_ARCTUS_Projects/30_Eeyou_IZMAPPING/data/good_images.csv
   ## assets = LC08_L1TOA, LC08_L2RGB, S2_L1TOA, S2_L2RGB, S1_L1C, LC09_L1TOA,LC09_L2RGB

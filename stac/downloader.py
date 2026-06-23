@@ -21,7 +21,7 @@ class STACDownloader(Downloader):
         self._config_path = config_path
         super().__init__(**config)
 
-    def _build_geoanalytics_ini(self) -> str:
+    def _build_geoanalytics_ini(self, start_date: str = None, end_date: str = None) -> str:
         cfg = configparser.ConfigParser()
         # GLOBAL section (Geoanalytics expects 'GLOBAL')
         g = self._config_dic.get('global', {})
@@ -30,8 +30,10 @@ class STACDownloader(Downloader):
 
         # Required / common fields
         G['aoi'] = g.get('aoi', '')
-        if g.get('start_date'): G['start_date'] = g['start_date']
-        if g.get('end_date'): G['end_date'] = g['end_date']
+        sd = start_date or (g.get('start_date') if not self._multi_year_mode else None)
+        ed = end_date   or (g.get('end_date')   if not self._multi_year_mode else None)
+        if sd: G['start_date'] = sd
+        if ed: G['end_date'] = ed
         if g.get('assets'): G['assets'] = g['assets']
         if g.get('target'): G['target'] = g['target']
         if g.get('cloud_percentage'): G['cloud_percentage'] = str(g['cloud_percentage'])
@@ -66,12 +68,16 @@ class STACDownloader(Downloader):
         return tmp_path
 
     def run(self):
-        tmp_ini = self._build_geoanalytics_ini()
-        try:
-            downloader = GeoanalyticsDownloader(config_path=tmp_ini)
-            downloader.run()
-        finally:
+        for _s, _e in self.date_ranges:
+            tmp_ini = self._build_geoanalytics_ini(
+                start_date=_s.format('YYYY-MM-DD'),
+                end_date=_e.format('YYYY-MM-DD'),
+            )
             try:
-                os.remove(tmp_ini)
-            except OSError:
-                pass
+                downloader = GeoanalyticsDownloader(config_path=tmp_ini)
+                downloader.run()
+            finally:
+                try:
+                    os.remove(tmp_ini)
+                except OSError:
+                    pass
