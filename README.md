@@ -27,11 +27,25 @@ Register your Google Cloud project for Earth Engine: https://code.earthengine.go
 
 **GCLD / CDSE backends** — require [ACOLITE](https://github.com/acolite/acolite) for TOA reflectance generation. Set `acolite_dir` in the config to your local ACOLITE clone.
 
-**CDSE backend (cloud masking)** — IdePix via ESA SNAP is used when available, with automatic fallback to native OLCI quality flags. To enable IdePix:
+**CDSE backend (cloud masking)** — controlled by `cloud_mask_method` in the `CDSE` config section:
+
+| Value | Behaviour |
+|-------|-----------|
+| `idepix` (default) | ESA SNAP IdePix; auto-falls back to native flags on pre-AVX2 CPUs or if SNAP is unavailable |
+| `native` | Native OLCI `qualityFlags.nc` bits (CLOUD, CLOUD_AMBIGUOUS, CLOUD_SHADOW); no SNAP required |
+
+To enable IdePix:
 1. Install [ESA SNAP](https://step.esa.int/main/download/snap-download/)
 2. `pip install esa_snappy`
 3. `<SNAP_dir>/bin/snappy-conf <python_executable>`
 4. Install the IdePix plugin: `<SNAP_dir>/bin/snap --modules --install org.esa.snap.idepix.core org.esa.snap.idepix.olci --nogui --nosplash`
+
+**PROJ conflicts** — if another application (e.g. SeaDAS) sets `PROJ_LIB`/`PROJ_DATA` in the environment, set `proj_data` in the `GLOBAL` config section to override it before any geo library is loaded:
+```yaml
+GLOBAL:
+  proj_data: /path/to/proj/data   # directory containing proj.db
+```
+To find the right path: `python -c "import pyproj; print(pyproj.datadir.get_data_dir())"`. See `docs/troubleshooting.md` for details.
 
 ## Usage
 
@@ -40,6 +54,26 @@ python main.py -c download.yaml
 ```
 
 Edit `download.yaml` to set the backend, AOI path, date range, assets, and output directory. A timestamped copy of the config is saved to `save_dir` on each run.
+
+### Date range
+
+Two formats are supported in `GLOBAL`:
+
+**Single range** — one continuous window:
+```yaml
+start_date: '2025-09-20'
+end_date:   '2025-10-20'
+```
+
+**Multi-year seasonal window** — repeat the same window for each year in `[start_year, end_year]`:
+```yaml
+start_year: 2020
+end_year:   2025
+start_date: '09-20'   # MM-DD
+end_date:   '10-20'   # MM-DD
+```
+
+Cross-year windows (e.g. `start_date: '12-01'`, `end_date: '02-28'`) are handled correctly — the end falls in year+1.
 
 ## Supported assets
 
