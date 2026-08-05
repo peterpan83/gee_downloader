@@ -83,7 +83,7 @@ class GEEDownloader(Downloader):
             else:
                 self.date_downloading = []
                 for _s, _e in self.date_ranges:
-                    self.date_downloading.extend(pendulum.period(_s, _e).range('days'))
+                    self.date_downloading.extend(_s.diff(_e).range('days'))
 
 
             self.download_imagecollection()

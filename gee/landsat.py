@@ -81,8 +81,85 @@ def get_cloudpercentage(date, aoi_rect_ee, satellite='LC08', cloud_prob_threshol
     return cloud_pixels / total_pixels * 100
 
 
-def get_snowicepercentage(date, aoi_rect_ee, water_mask=None,resolution=20):
-    return 0
+def add_snowicepixelsnumber_image_landsat(images: ee.ImageCollection, roi_rect, resolution=20, water_mask=None):
+    '''
+    Landsat Collection 2 QA_PIXEL bits: 0 Fill, 1 Dilated Cloud, 2 Cirrus, 3 Cloud,
+    4 Cloud Shadow, 5 Snow, 6 Clear, 7 Water
+    '''
+    def __f(image: ee.Image):
+        if water_mask is not None:
+            image = image.updateMask(water_mask)
+
+        qa = image.select('QA_PIXEL')
+        fill_mask = qa.bitwiseAnd(1 << 0).neq(0)
+        cloud_mask = get_cloudmask_from_bitmask_l2(qa)
+        snowice_mask = qa.bitwiseAnd(1 << 5).neq(0)
+        water_band_mask = qa.bitwiseAnd(1 << 7).neq(0)
+        total_mask = fill_mask.Not()
+        other_mask = total_mask.And(cloud_mask.Not()).And(snowice_mask.Not()).And(water_band_mask.Not())
+
+        total = total_mask.rename('total')
+        cloud = cloud_mask.rename('cloud')
+        snowice = snowice_mask.rename('snowice')
+        water = water_band_mask.rename('water')
+        other = other_mask.rename('other')
+
+        image = image.addBands(snowice).addBands(total).addBands(cloud).addBands(water).addBands(other)
+
+        reducer = image.reduceRegion(
+            reducer=ee.Reducer.sum(),
+            geometry=roi_rect,
+            scale=resolution,
+            maxPixels=1e11
+        )
+
+        return image.set('snowice_num', reducer.get('snowice')) \
+                     .set('total_num', reducer.get('total')) \
+                     .set('water_num', reducer.get('water')) \
+                     .set('other_num', reducer.get('other')) \
+                     .set('cloud_num', reducer.get('cloud'))
+    images = images.map(__f)
+    return images
+
+
+def get_snowicepercentage(date, aoi_rect_ee, satellite='LC08', water_mask=None, resolution=20):
+    source = f'LANDSAT/{satellite}/C02/T1_TOA'
+    s_d, e_d = date.format('YYYY-MM-DD'), (date + pendulum.duration(days=1)).format('YYYY-MM-DD')
+    images = ee.ImageCollection(source).filterDate(s_d, e_d).filterBounds(aoi_rect_ee)
+
+    features = images.getInfo()['features']
+    img_count = len(features)
+    if img_count == 0:
+        raise NoEEImageFoundError(source, date=s_d)
+
+    date_acquired = features[0]['properties']['DATE_ACQUIRED'].replace('-', '')
+    scene_center_time = features[0]['properties']['SCENE_CENTER_TIME'].replace(':', '')[:6]
+    acq_time = f'{date_acquired}T{scene_center_time}'
+    product_ids = ','.join([feat['properties']['LANDSAT_PRODUCT_ID'] for feat in features])
+
+    images_snowice = add_snowicepixelsnumber_image_landsat(images, roi_rect=aoi_rect_ee,
+                                                            resolution=resolution,
+                                                            water_mask=water_mask)
+    images_snowice_list = images_snowice.toList(images_snowice.size())
+
+    total_pixels, snowice_pixels, cloud_pixels, water_pixels, other_pixels = 0, 0, 0, 0, 0
+    for i in range(img_count):
+        img_1 = ee.Image(images_snowice_list.get(i)).clip(aoi_rect_ee)
+        snowice_pixels += ee.Number(img_1.get('snowice_num')).getInfo()
+        cloud_pixels += ee.Number(img_1.get('cloud_num')).getInfo()
+        water_pixels += ee.Number(img_1.get('water_num')).getInfo()
+        other_pixels += ee.Number(img_1.get('other_num')).getInfo()
+        total_pixels += ee.Number(img_1.get('total_num')).getInfo()
+
+    if total_pixels == 0:
+        raise EEImageOverlayError(ee_source=source, date=s_d)
+
+    return (acq_time,
+            snowice_pixels / total_pixels * 100,
+            cloud_pixels / total_pixels * 100,
+            water_pixels / total_pixels * 100,
+            other_pixels / total_pixels * 100,
+            product_ids)
 
 
 
@@ -99,6 +176,7 @@ def get_l8_cloudpercentage(date, aoi_rect_ee, cloud_prob_threshold=60, water_mas
 def get_l8_snowicepercentage(date, aoi_rect_ee, water_mask=None,resolution=20):
     return get_snowicepercentage(date=date,
                                  aoi_rect_ee=aoi_rect_ee,
+                                 satellite='LC08',
                                  water_mask=water_mask,
                                  resolution=resolution)
 
@@ -149,6 +227,7 @@ def get_l9_cloudpercentage(date, aoi_rect_ee, cloud_prob_threshold=60, water_mas
 def get_l9_snowicepercentage(date, aoi_rect_ee, water_mask=None,resolution=20):
     return get_snowicepercentage(date=date,
                                  aoi_rect_ee=aoi_rect_ee,
+                                 satellite='LC09',
                                  water_mask=water_mask,
                                  resolution=resolution)
 
