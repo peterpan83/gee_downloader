@@ -28,12 +28,16 @@ class GEEDownloader(Downloader):
 
     def __create_cells_single(self, resolution, bandnumber):
         # resolution = int(config['resolution'])
-        ## the cell size varies with the resolution
-        ## it is 0.1 when the resolution is 10 based on the previous experience
-
-        ## why 13? because it is tested ok for senteinel-2 l1c with 16 bands including obs geo
-        # step = 0.1 * (resolution / 10) * 13 / bandnumber
-        step = 0.1 * (resolution / 10) * 13 / bandnumber
+        ## GEE's getDownloadURL enforces a 50331648-byte (48MB) request cap. Request payload
+        ## scales with cell AREA (edge^2) * bandnumber, not linearly with 1/bandnumber, so the
+        ## cell edge (in degrees) must come from a pixel budget rather than a flat ratio -
+        ## otherwise low band-count assets (e.g. 3-band RGB) get oversized cells that exceed
+        ## the request cap outright (see NEEDS-review-if-changed: GEE 50331648-byte limit).
+        max_request_bytes = 40 * 1024 * 1024  # headroom under the 50331648-byte cap
+        bytes_per_pixel_band = 4  # GEE returns float32 pixels
+        meters_per_degree = 111320
+        max_pixel_edge = (max_request_bytes / (bandnumber * bytes_per_pixel_band)) ** 0.5
+        step = max_pixel_edge * resolution / meters_per_degree
 
         x_step, y_step = step, step
         print(f'GEE cell size for res:{resolution}, band num: {bandnumber}:', x_step, y_step)
