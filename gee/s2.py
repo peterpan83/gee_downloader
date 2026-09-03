@@ -1,5 +1,7 @@
 import os,sys, glob
 import subprocess
+import json
+import re
 import numpy as np
 import pickle
 
@@ -466,46 +468,128 @@ def get_obsgeo_from_MTD_TL(MTD_TL_XML):
             'saa':saa}
 
 
-def get_obsgeo(pickle_file):
-    try:
-        client = bigquery.Client()
-    except Exception as e:
-        from google.cloud import bigquery
-        client = bigquery.Client()
+S2_GCS_BUCKET = 'gs://gcp-public-data-sentinel-2'
+S2_INDEX_TABLE = '`bigquery-public-data.cloud_storage_geo_index.sentinel_2_index`'
+## the tile token is last in an 'essential' product id, so do not require a trailing _
+_S2_TILE_RE = re.compile(r'_T(\d{2})([A-Z])([A-Z]{2})(?:_|$)')
 
+
+def derive_mtd_tl_url(product_id):
+    '''
+    Where a granule's MTD_TL.xml lives, worked out from the product id alone: the tile
+    token T17UNA maps to tiles/17/U/NA. The granule directory is left as a wildcard for
+    gsutil to expand, which is the only thing the BigQuery index was ever consulted for.
+
+    Returns None for product ids with no tile token (the old OPER format).
+    '''
+    m = _S2_TILE_RE.search(product_id)
+    if m is None:
+        return None
+    zone, band, square = m.groups()
+    return (f'{S2_GCS_BUCKET}/tiles/{zone}/{band}/{square}/'
+            f'{product_id}.SAFE/GRANULE/*/MTD_TL.xml')
+
+
+def _gsutil_cp(url, dst_file):
+    try:
+        subprocess.run(['gsutil', '-q', 'cp', url, dst_file],
+                       capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f'gsutil cp {url}: {e.stderr.strip() or e}')
+        return False
+    except Exception as e:
+        print(f'gsutil cp {url}: {e}')
+        return False
+    return os.path.exists(dst_file)
+
+
+def _index_cache_file():
+    cache_dir = os.path.join(os.path.expanduser('~'), '.cache', 'gee_downloader')
+    os.makedirs(cache_dir, exist_ok=True)
+    return os.path.join(cache_dir, 'sentinel2_index.json')
+
+
+def _first_present(row, *columns):
+    for c in columns:
+        v = row[c]
+        if v is not None and not (isinstance(v, float) and v != v):  ## v != v catches NaN
+            return v
+    return None
+
+
+def query_mtd_tl_url(product_id):
+    '''
+    Fallback lookup in the BigQuery public index, for the rare product whose derived path
+    does not resolve.
+
+    Every lookup is metered against the 1TiB monthly free allowance, and measured with
+    `bq query --dry_run` it scans 0.5-4GB depending on the product id - a few hundred
+    lookups is enough to hit "Quota exceeded: free query bytes scanned". So only the three
+    columns actually used are selected, and answers are cached on disk, misses included,
+    so no product is ever charged for twice.
+    '''
+    cache_f = _index_cache_file()
+    cache = {}
+    if os.path.exists(cache_f):
+        try:
+            with open(cache_f) as f:
+                cache = json.load(f)
+        except Exception as e:
+            print(f'ignoring unreadable index cache {cache_f}: {e}')
+    if product_id in cache:
+        return cache[product_id]
+
+    from google.cloud import bigquery
+    client = bigquery.Client()
+    query_str = (f'SELECT granule_id,base_url,source_url FROM {S2_INDEX_TABLE} '
+                 f'WHERE product_id = "{product_id}"')
+    try:
+        rows_df = client.query(query_str).result().to_dataframe()
+    except Exception as e:
+        ## letting this fall through left rows_df unbound and raised an UnboundLocalError
+        ## further down, hiding the real cause (expired ADC, or the scan quota above)
+        print(e)
+        print("try---> gcloud auth application-default login; pip install db_dtypes")
+        raise BigQueryError(query_str=query_str)
+
+    url = None
+    if rows_df.shape[0] > 0:
+        ## for some products the location is under source_url instead of base_url
+        base_url = _first_present(rows_df.iloc[0], 'base_url', 'source_url')
+        granule_id = _first_present(rows_df.iloc[0], 'granule_id')
+        if base_url is not None and granule_id is not None:
+            url = f'{base_url}/GRANULE/{granule_id}/MTD_TL.xml'
+
+    cache[product_id] = url
+    try:
+        with open(cache_f, 'w') as f:
+            json.dump(cache, f, indent=1)
+    except Exception as e:
+        print(f'could not update index cache {cache_f}: {e}')
+    return url
+
+
+def get_obsgeo(pickle_file):
     mtd_tl_xml_file = pickle_file.replace('_info.pickle', '_MTD_TL.xml')
     if not os.path.exists(mtd_tl_xml_file):
         proid = get_prodid(pickle_file)
         if proid is None:
             raise OldSentinelFormat(message=pickle_file)
 
+        ## the product id already says where the file is, so go straight to GCS and keep
+        ## the metered index query as a fallback for the products that path misses
+        mtd_tl_xml_url = derive_mtd_tl_url(proid)
+        fetched = _gsutil_cp(mtd_tl_xml_url, mtd_tl_xml_file) if mtd_tl_xml_url else False
 
-        query_str = (
-                    'SELECT granule_id,product_id,base_url,source_url,north_lat,south_lat,west_lon,east_lon FROM `bigquery-public-data.cloud_storage_geo_index.sentinel_2_index`'
-                    'WHERE product_id = ' + f'"{proid}"')
-        try:
-            query_job = client.query(query_str)  # API request
-            rows_df = query_job.result().to_dataframe()  # Waits for query to finish
-        except Exception as e:
-            print(e)
-            print("try---> gcloud auth application-default login; pip install db_types")
-            # raise BigQueryError(query_str=query_str)
+        if not fetched:
+            print(f'{proid}: not at the derived path, asking the BigQuery index')
+            mtd_tl_xml_url = query_mtd_tl_url(proid)
+            if mtd_tl_xml_url is None:
+                raise NoEEImageFoundError(ee_source=f'sentinel_2_index: {proid}', date='')
+            fetched = _gsutil_cp(mtd_tl_xml_url, mtd_tl_xml_file)
 
-        if rows_df.shape[0] < 1:
-            raise NoEEImageFoundError(ee_source=query_str,date='')
-
-        base_url = rows_df.iloc[0]['base_url']
-        granule_id = rows_df.iloc[0]['granule_id']
-        if base_url is None:
-            base_url = rows_df.iloc[0]['source_url'] ## for some data, the URL is stored in the column of 'source_url'
-        if (base_url is None) or (granule_id is None):
-            raise GsutilError('base_url or granule_id is None, check')
-        # manifest_safe_url = f'{base_url}/manifest.safe'
-        # mtd_msil1c_xml_url = f'{base_url}/MTD_MSIL1C.xml'
-        mtd_tl_xml_url = f'{base_url}/GRANULE/{granule_id}/MTD_TL.xml'
-        subprocess.run(["gsutil", "-m", "cp", "-r", mtd_tl_xml_url, mtd_tl_xml_file], check=True)
-        if not os.path.exists(mtd_tl_xml_file):
-            raise GsutilError(f'failed: gsutil -m cp -r {mtd_tl_xml_url} {mtd_tl_xml_file}')
+        if not fetched:
+            raise GsutilError(f'failed: gsutil cp {mtd_tl_xml_url} {mtd_tl_xml_file}')
 
 
 
@@ -527,13 +611,6 @@ def get_obsgeo(pickle_file):
 
 
 def get_obsgeo_fromdir(download_dir):
-    from google.cloud import bigquery
-    try:
-        client = bigquery.Client()
-    except:
-        from google.cloud import bigquery
-        client = bigquery.Client()
-
     info_pickels = glob.glob(os.path.join(download_dir, "*.pickle"))
     for pickle_file in info_pickels:
         sza, vza, phi,transform_60, eosg_crs = get_obsgeo(pickle_file)
