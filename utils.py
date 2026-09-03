@@ -1,9 +1,10 @@
 import os, configparser
 import numpy as np
 import rasterio
-from rasterio.warp import reproject,calculate_default_transform,Resampling
+from rasterio.warp import reproject,calculate_default_transform,Resampling,transform_bounds
 from rasterio.io import MemoryFile
 from rasterio.merge import merge
+from rasterio.transform import Affine
 
 def convert_config_to_dict(config:configparser.ConfigParser):
     '''
@@ -162,6 +163,61 @@ def mosaic_tifs(tif_files, dst_crs=None):
     mosaic, out_trans = merge(src_files_to_mosaic)
     return mosaic, out_trans,dst_crs_ret
 
+def pad_mosaic_to_bounds(mosaic, transform, dst_crs, aoi_bounds, fill=0):
+    '''
+    Pad (or crop) a mosaic so it spans the whole AOI instead of only the grid cells that
+    happened to carry data. Without this, a date whose overpass covers part of the AOI
+    yields a smaller raster than a fully covered date, and the two cannot be stacked.
+
+    @aoi_bounds: (west, south, east, north) in lon/lat, as given by shapely .bounds
+    The output grid is snapped to absolute multiples of the pixel size so that every date
+    of the same AOI/CRS/resolution lands on an identical grid.
+    '''
+    res_x, res_y = transform.a, -transform.e
+    if res_x <= 0 or res_y <= 0:
+        return mosaic, transform
+
+    left, bottom, right, top = transform_bounds('EPSG:4326', dst_crs, *aoi_bounds)
+    left = np.floor(left / res_x) * res_x
+    right = np.ceil(right / res_x) * res_x
+    bottom = np.floor(bottom / res_y) * res_y
+    top = np.ceil(top / res_y) * res_y
+
+    width = int(round((right - left) / res_x))
+    height = int(round((top - bottom) / res_y))
+    if width < 1 or height < 1:
+        return mosaic, transform
+
+    ## where the existing mosaic sits inside the AOI grid; may be negative when a grid
+    ## cell overshoots the AOI, hence the clipping below
+    col_off = int(round((transform.c - left) / res_x))
+    row_off = int(round((top - transform.f) / res_y))
+
+    src_col, src_row = max(0, -col_off), max(0, -row_off)
+    dst_col, dst_row = max(0, col_off), max(0, row_off)
+    n_cols = min(mosaic.shape[2] - src_col, width - dst_col)
+    n_rows = min(mosaic.shape[1] - src_row, height - dst_row)
+    if n_cols < 1 or n_rows < 1:
+        print('mosaic does not intersect the AOI, leaving its extent untouched')
+        return mosaic, transform
+
+    padded = np.full((mosaic.shape[0], height, width), fill, dtype=mosaic.dtype)
+    padded[:, dst_row:dst_row + n_rows, dst_col:dst_col + n_cols] = \
+        mosaic[:, src_row:src_row + n_rows, src_col:src_col + n_cols]
+    return padded, Affine(res_x, 0.0, left, 0.0, -res_y, top)
+
+
+def aoi_coverage(mosaic, fill=0):
+    '''
+    Fraction of the raster carrying valid pixels, judged on the first band. GEE returns
+    masked pixels as 0, which the rest of this module already treats as nodata.
+    '''
+    band = mosaic[0]
+    valid = np.isfinite(band) & (band != fill) if np.issubdtype(band.dtype, np.floating) \
+        else (band != fill)
+    return float(valid.mean())
+
+
 def merge_tifs(tif_files,
                out_file,
                descriptions,
@@ -172,11 +228,20 @@ def merge_tifs(tif_files,
                RGB = False,
                min_max = (None,None),
                output_cog = True,
+               aoi_bounds = None,
+               min_aoi_coverage = 0.0,
                **extra_info):
     '''
     @obs_geo, None or (theta_z, theta_s, phi)
     @bandnames: None or a list
+    @aoi_bounds: None, or (west, south, east, north) in lon/lat. When given, the mosaic is
+    padded with nodata to the full AOI so every date shares one grid.
+    @min_aoi_coverage: skip writing (return -2) when the valid-pixel fraction over the AOI
+    falls below this, so near-empty overpasses do not land on disk looking like full scenes.
 
+    returns (status, dst_crs, coverage); status 1 written, -1 nothing mergeable,
+    -2 written nothing because coverage fell below min_aoi_coverage. coverage is None
+    unless aoi_bounds was given.
     '''
     tif_files = sorted(tif_files, key=lambda x: os.path.getsize(x))
     if bandnames is not None:
@@ -206,7 +271,17 @@ def merge_tifs(tif_files,
         else:
             badfile = False
     if len(src_files_to_mosaic) == 0:
-        return -1, None
+        return -1, None, None
+
+    coverage = None
+    if aoi_bounds is not None:
+        mosaic, out_trans = pad_mosaic_to_bounds(mosaic, out_trans, dst_crs_ret, aoi_bounds)
+        coverage = aoi_coverage(mosaic)
+        print(f'AOI coverage: {100 * coverage:.1f}% ({mosaic.shape[2]}x{mosaic.shape[1]} px)')
+        if coverage < min_aoi_coverage:
+            print(f'skipping {os.path.basename(out_file)}: coverage below the '
+                  f'{100 * min_aoi_coverage:.0f}% threshold')
+            return -2, dst_crs_ret, coverage
 
     out_meta = src.meta.copy()
     # print(out_meta)
@@ -251,6 +326,8 @@ def merge_tifs(tif_files,
         #     f.descriptions = description
         dst.update_tags(info=descriptions)
         dst.update_tags(info_item=descriptions_meta)
+        if coverage is not None:
+            dst.update_tags(aoi_coverage=f'{coverage:.4f}')
 
         for key in extra_info:
             if key == 'cloud_percentage':
@@ -260,7 +337,7 @@ def merge_tifs(tif_files,
         if bandnames is not None:
             # print(len(bandnames_c),mosaic.shape)
             dst.descriptions = tuple(bandnames_c)
-    return 1, dst_crs_ret
+    return 1, dst_crs_ret, coverage
 
 
 # ---------------- YAML config support ----------------

@@ -40,6 +40,9 @@ GEE:
   mode: download
   cloud_percentage: 50
   snowice_percentage: 5
+  ## percent of the AOI that must carry valid pixels for a merged file to be written.
+  ## 0 keeps every acquisition; raise it to drop overpasses that only clip the AOI edge.
+  min_aoi_coverage: 0
 
 ## download the level-1 images from google cloud storage, for S2, it is in format of SAFE
 GCLD:

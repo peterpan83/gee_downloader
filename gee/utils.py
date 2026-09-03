@@ -14,7 +14,8 @@ from rasterio.transform import Affine
 from shapely.geometry import MultiPolygon
 
 from utils import merge_tifs, mosaic_tifs
-from .exceptions import DownloadDirIncompleteError,NoGoodTifsError, NoEEIntersectionBandsError, OldFormat, GsutilError
+from .exceptions import (DownloadDirIncompleteError, NoGoodTifsError, NoEEIntersectionBandsError,
+                         OldFormat, GsutilError, BigQueryError, InsufficientAOICoverageError)
 
 import logging
 
@@ -141,6 +142,11 @@ def download_images_roi(images: ee.ImageCollection, grids, save_dir, bands=None,
             # print(url)
             print(f'downloading {url}')
             response = requests.get(url)
+            if response.status_code != 200:
+                ## an error body written straight to a .tif used to fail later and silently
+                ## leave a hole in the mosaic; say which cell failed and why instead
+                print(f'cell {j}: GEE returned HTTP {response.status_code}: {response.text[:200]}')
+                continue
             o_f = os.path.join(save_dir, name + '_' + str(j) + '.tif')
             with open(o_f, 'wb') as f:
                 f.write(response.content)
@@ -163,6 +169,52 @@ def extract_id_from_info(self, pickle_file):
     return info['id'].split('/')[-1]
 
 
+def _has_valid_pixels(tif, fill=0):
+    '''
+    True as soon as one finite, non-nodata pixel is found. Reads block by block so a tile
+    with data near the top costs almost nothing.
+    '''
+    try:
+        with rasterio.open(tif) as src:
+            for _, window in src.block_windows(1):
+                block = src.read(window=window, masked=True)
+                data = block.filled(fill) if np.ma.isMaskedArray(block) else block
+                if np.issubdtype(data.dtype, np.floating):
+                    if np.any(np.isfinite(data) & (data != fill)):
+                        return True
+                elif np.any(data != fill):
+                    return True
+    except Exception as e:
+        print(f'unreadable tile {os.path.basename(tif)}: {e}')
+        return False
+    return False
+
+
+def select_tifs_with_data(download_dir, pattern='*_*_*.tif', expected_cells=None):
+    '''
+    Keep the grid cells that actually carry pixels, and say out loud what was dropped.
+
+    Replaces a file-size heuristic (drop anything under 1KB per band) that used compressed
+    size as a proxy for emptiness. That proxy cut both ways: a sparse but valid tile could
+    fall under the threshold and be discarded, an empty uncompressed one could pass it, and
+    since the threshold scaled with band count the same acquisition merged to different
+    extents for a 3-band and a 16-band asset.
+    '''
+    tifs = sorted(glob.glob(os.path.join(download_dir, pattern)))
+    kept = [_ for _ in tifs if _has_valid_pixels(_)]
+
+    name = os.path.basename(os.path.normpath(download_dir))
+    if len(kept) < len(tifs):
+        print(f'{name}: {len(tifs) - len(kept)}/{len(tifs)} downloaded cells hold no valid pixel '
+              f'(outside the acquisition footprint), leaving them out of the mosaic')
+    if expected_cells is not None:
+        cells = {os.path.splitext(_)[0].rsplit('_', 1)[-1] for _ in tifs}
+        if len(cells) < expected_cells:
+            print(f'{name}: only {len(cells)}/{expected_cells} grid cells produced a file, '
+                  f'{expected_cells - len(cells)} download(s) failed - the mosaic will have holes')
+    return kept
+
+
 def merge_download_dir(download_dir,
                        output_f,
                        descriptions_meta,
@@ -172,27 +224,34 @@ def merge_download_dir(download_dir,
                        remove_temp = True,
                        RGB = False,
                        min_max = (None, None),
+                       aoi_bounds = None,
+                       min_aoi_coverage = 0.0,
+                       expected_cells = None,
                        **extra_info):
 
-    ### the minimum size should vary with the resolution and grid size,
-    ### to be fixed
-    tifs = [_ for _ in glob.glob(os.path.join(download_dir, f'*_*_*.tif')) if(os.path.getsize(_) / 1024.0) > (1.0*len(bandnames)) ]
+    tifs = select_tifs_with_data(download_dir, pattern='*_*_*.tif', expected_cells=expected_cells)
 
     if len(tifs) < 1:
         raise DownloadDirIncompleteError(download_dir)
     # dst_crs = 'EPSG:4326'
-    ret, dst_crs = merge_tifs(tifs, output_f, descriptions=':'.join(descriptions),
+    ret, dst_crs, coverage = merge_tifs(tifs, output_f, descriptions=':'.join(descriptions),
                          descriptions_meta=descriptions_meta,
                               bandnames=bandnames,
                               dst_crs=dst_crs,
                               RGB = RGB,
                               min_max = min_max,
+                              aoi_bounds = aoi_bounds,
+                              min_aoi_coverage = min_aoi_coverage,
                               **extra_info)
 
     if ret == 1 and remove_temp:
         shutil.rmtree(download_dir)
     if ret == -1:  ## no good tifs found in the temp dir, and it casue the failure of merging
         raise NoGoodTifsError(download_dir)
+    if ret == -2:  ## the acquisition barely touches the AOI, nothing was written
+        if remove_temp:
+            shutil.rmtree(download_dir)
+        raise InsufficientAOICoverageError(coverage, min_aoi_coverage)
     return dst_crs
 
 
@@ -203,6 +262,9 @@ def merge_download_dir_obsgeo(func_obsgeo, download_dir,
                        dst_crs=None,
                        bandnames=None,
                        remove_temp = True,
+                       aoi_bounds = None,
+                       min_aoi_coverage = 0.0,
+                       expected_cells = None,
                        **extra_info):
 
     info_pickels = glob.glob(os.path.join(download_dir, "*.pickle"))
@@ -229,14 +291,22 @@ def merge_download_dir_obsgeo(func_obsgeo, download_dir,
         except GsutilError as e:
             print(e)
             continue
+        except BigQueryError as e:
+            ## no granule metadata (usually expired credentials) - the pixels are already
+            ## downloaded, so fall through to the scene-mean geometry rather than losing them
+            print(e)
+            continue
 
 
 
         tilename = os.path.basename(pickle_file).split('_')[-2]
 
-        tifs = [_ for _ in glob.glob(os.path.join(download_dir, f'*_{tilename}_*.tif')) if(os.path.getsize(_) / 1024.0) > (1.0*len(bandnames))]
+        tifs = select_tifs_with_data(download_dir, pattern=f'*_{tilename}_*.tif')
         if len(tifs) < 1:
-            raise DownloadDirIncompleteError(download_dir)
+            ## this granule contributes nothing to the AOI; other granules of the same
+            ## date still can, so carry on rather than failing the whole acquisition
+            print(f'{tilename}: no cell with valid pixels, skipping this granule')
+            continue
 
         output_f_t = '_'.join(tifs[0].split('_')[:-1])+'.tif'
 
@@ -362,20 +432,29 @@ def merge_download_dir_obsgeo(func_obsgeo, download_dir,
         bandnames += ['sza', 'vza', 'phi']
     else:
         logging.warning('OBSGEO is not available, using the mean values for the entire scene!')
-        output_f_ts = [_ for _ in glob.glob(os.path.join(download_dir, f'*.tif')) if(os.path.getsize(_) / 1024.0) > (1.0*len(bandnames))]
+        output_f_ts = select_tifs_with_data(download_dir, pattern='*.tif',
+                                            expected_cells=expected_cells)
 
-    ret, dst_crs = merge_tifs(output_f_ts, output_f, descriptions=':'.join(descriptions),
+    if len(output_f_ts) < 1:
+        raise DownloadDirIncompleteError(download_dir)
+
+    ret, dst_crs, coverage = merge_tifs(output_f_ts, output_f, descriptions=':'.join(descriptions),
                               descriptions_meta=descriptions_meta,
                               bandnames=bandnames,
                               dst_crs=dst_crs,
+                              aoi_bounds=aoi_bounds,
+                              min_aoi_coverage=min_aoi_coverage,
                               **extra_info)
 
     if ret == 1 and remove_temp:
         shutil.rmtree(download_dir)
         # print(meta_img)
-
-    # if ret == 1 and remove_temp:
-    #     shutil.rmtree(download_dir)
+    if ret == -1:
+        raise NoGoodTifsError(download_dir)
+    if ret == -2:
+        if remove_temp:
+            shutil.rmtree(download_dir)
+        raise InsufficientAOICoverageError(coverage, min_aoi_coverage)
     return dst_crs
 
 

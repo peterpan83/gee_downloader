@@ -364,7 +364,7 @@ def merge_download_dir(
     if len(tifs) < 1:
         raise DownloadDirIncompleteError(download_dir)
 
-    ret, dst_crs = merge_tifs(
+    ret, dst_crs, _coverage = merge_tifs(
         tifs,
         output_path,
         descriptions=":".join(descriptions)

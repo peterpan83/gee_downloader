@@ -48,9 +48,7 @@ class GsutilError(Exception):
         super().__init__(self.msg)
 
 
-
-
-
-
-
-
+class InsufficientAOICoverageError(Exception):
+    def __init__(self, coverage, threshold):
+        self.msg = f"AOI coverage {100*coverage:.1f}% is below the required {100*threshold:.0f}%"
+        super().__init__(self.msg)

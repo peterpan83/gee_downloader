@@ -25,6 +25,11 @@ class GEEDownloader(Downloader):
             sys.exit(-1)
         super(GEEDownloader, self).__init__(**config)
 
+        ## an overpass clipping one corner of the AOI produces a mostly empty file that is
+        ## easy to mistake for a full scene; percent of the AOI that must carry pixels for
+        ## the merged file to be written at all. 0 keeps every acquisition.
+        self.min_aoi_coverage = float(config['global'].get('min_aoi_coverage', 0) or 0) / 100.0
+
 
     def __create_cells_single(self, resolution, bandnumber):
         # resolution = int(config['resolution'])
@@ -210,6 +215,9 @@ class GEEDownloader(Downloader):
                                    descriptions_meta=des_meta,
                                    bandnames=bands,
                                    remove_temp=True,
+                                   aoi_bounds=self.aoi_bounds,
+                                   min_aoi_coverage=self.min_aoi_coverage,
+                                   expected_cells=len(grids[0]),
                                 **extral_info_dic)
 
                 else:
@@ -222,6 +230,9 @@ class GEEDownloader(Downloader):
                                    remove_temp=True,
                                    RGB = rgb,
                                    min_max = (vmin,vmax),
+                                   aoi_bounds=self.aoi_bounds,
+                                   min_aoi_coverage=self.min_aoi_coverage,
+                                   expected_cells=len(grids[0]),
                                    **extral_info_dic)
             except Exception as e:
                 print(e)
@@ -403,6 +414,9 @@ class GEEDownloader(Downloader):
                                                      remove_temp=True,
                                                      RGB=rgb,
                                                      min_max=(vmin, vmax),
+                                                     aoi_bounds=self.aoi_bounds,
+                                                     min_aoi_coverage=self.min_aoi_coverage,
+                                                     expected_cells=len(grids[0]),
                                                      **extral_info_dic)
                 except Exception as e:
                     print(e)
