@@ -53,10 +53,13 @@ def gen_subcells(cell_geometry: MultiPolygon, x_step=0.1, y_step=0.1, x_overlap=
     return x, y
 
 
-def download_images_roi(images: ee.ImageCollection, grids, save_dir, bands=None, resolution=10):
+def download_images_roi(images: ee.ImageCollection, grids, save_dir, bands=None, resolution=10, image_transform=None):
     '''
     @grids ee_small_cells and ee_small_cells_box
     @bands, for s2 ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B10', 'B11', 'QA60']
+    @image_transform, optional ee.Image -> ee.Image function applied right after each image is
+    fetched by id, before band introspection/selection. Used to derive computed bands (e.g. the
+    S1 VV/VH ratio) that don't exist on the raw source image.
     '''
     # xs, ys = gen_subcells(roi_geo, x_step=0.1, y_step=0.1)
     # ee_small_cells = [ee.Geometry.Rectangle([x[0], y[0], x[1], y[1]]) for x in xs for y in ys]
@@ -81,6 +84,8 @@ def download_images_roi(images: ee.ImageCollection, grids, save_dir, bands=None,
         for i in range(img_count):
             _id = images.getInfo()['features'][i]['id']
             img = ee.Image(_id)
+            if image_transform is not None:
+                img = image_transform(img)
             info = img.getInfo()
             bands_all = set([_['id'] for _ in info['bands']]) if bands_all is None \
                 else bands_all.intersection(set([_['id'] for _ in info['bands']]))
@@ -106,6 +111,8 @@ def download_images_roi(images: ee.ImageCollection, grids, save_dir, bands=None,
         #     continue
         _id = images.getInfo()['features'][i]['id']
         img = ee.Image(_id)
+        if image_transform is not None:
+            img = image_transform(img)
         info = img.getInfo()
         _id_name = _id.split('/')[-1]
         if not os.path.exists(save_dir):

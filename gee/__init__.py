@@ -20,6 +20,8 @@ from .s2 import get_obsgeo as get_obsgeo_s2_l1toa
 
 
 from .s1 import get_descriptions_l1c as get_descriptions_s1_l1c
+from .s1 import get_descriptions_l1c as get_descriptions_s1_l2rgb
 from .s1 import get_s1_info as get_s1info
+from .s1 import add_s1_rgb_bands as get_s1_l2rgb_image_transform
 
 from .downloader import GEEDownloader

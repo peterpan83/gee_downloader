@@ -60,3 +60,18 @@ def get_s1_info(date, aoi_rect_ee):
     return acq_time, bands
 
 
+def add_s1_rgb_bands(img):
+    '''
+    Builds a false-color RGB composite from dB-scaled SAR backscatter, since S1 GRD has no
+    natural RGB: R=VV, G=VH (both shifted +30dB into a non-negative range, as the shared
+    RGB renderer clips to [0,vmax] and divides by vmax, which breaks on negative input),
+    B=VV-VH (the dB-scale equivalent of the VV/VH ratio).
+    '''
+    vv = img.select('VV')
+    vh = img.select('VH')
+    r = vv.add(30).rename('R')
+    g = vh.add(30).rename('G')
+    b = vv.subtract(vh).rename('B')
+    return img.addBands([r, g, b])
+
+

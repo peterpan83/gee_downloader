@@ -178,11 +178,13 @@ class GEEDownloader(Downloader):
             print(f'{s_d}, {asset}, cloud percentage: {cloud_per} Start downloading ')
 
             temp_dir = os.path.join(save_dir, f'{self.aoi_name}_{s_d}')
+            image_transform = getattr(gee, f'get_{asset}_image_transform', None)
             try:
                 res, bands = download_images_roi(images=images, grids=grids,
                                               save_dir=temp_dir,
                                               bands=bands,
-                                              resolution=resolution)
+                                              resolution=resolution,
+                                              image_transform=image_transform)
             except Exception as e:
                 res = -1
                 print(f'{s_d},{asset}:{str(e)}')
