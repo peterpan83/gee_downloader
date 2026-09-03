@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+
+# JVM crash dumps (esa_snappy / GDAL)
+hs_err_pid*.log
+replay_pid*.log
+
+# OS
+.DS_Store
