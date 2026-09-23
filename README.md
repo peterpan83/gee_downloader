@@ -37,7 +37,7 @@ Alternatively, use the [Docker](#docker) instructions below, which include GDAL 
 To add or update dependencies, use `uv add <package>` or `uv lock --upgrade`
 and commit both `pyproject.toml` and `uv.lock` as appropriate.
 
-**GEE / GCLD backends** — also install and authenticate the gcloud CLI:
+**GEE / GCLD backends** — also install the [gcloud CLI](https://docs.cloud.google.com/sdk/docs/install-sdk#linux) and authenticate:
 ```bash
 gcloud auth login
 gcloud auth application-default login

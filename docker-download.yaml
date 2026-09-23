@@ -1,0 +1,144 @@
+GLOBAL:
+  ## stac or gee or gcld or cdse
+  backend: gee
+  aoi: /data/aoi.shp
+  ## Date range — two formats are supported:
+  ##   Option A (single range): full YYYY-MM-DD dates
+  #start_date: '2025-09-20'
+  #end_date:   '2025-10-20'
+  ##   Option B (multi-year seasonal window): set start_year/end_year + MM-DD dates.
+  ##   Downloads the same seasonal window for each year in [start_year, end_year].
+  ##   Cross-year windows (e.g. 12-01 to 02-28) are handled correctly.
+  start_date: '2026-09-18'
+  end_date:   '2026-09-19'
+  ## using a csv file to define the date ranges for each cell, the csv file should contain columns: name, date (yyyymmdd)
+  #date_csv = /mnt/0_ARCTUS_Projects/30_Eeyou_IZMAPPING/data/good_images.csv
+  ## assets = LC08_L1TOA, LC08_L2RGB, S2_L1TOA, S2_L2RGB, S1_L1C, LC09_L1TOA,LC09_L2RGB
+  assets: S2_L1TOA
+  save_dir: /output
+  output_mode: local # local or cloud
+  output_format: geotiff # cog or geotiff
+  ## optional: override PROJ_DATA/PROJ_LIB to avoid conflicts with other PROJ installations
+  ## (e.g. SeaDAS). Set to the directory containing proj.db that matches your Python environment.
+  ## Leave commented out if there is no PROJ conflict on this machine.
+  #proj_data: /path/to/proj/data
+
+STAC:
+   stac_api: https://earth-search.aws.element84.com/v1
+   stac_best_item: lowest_cloud
+   stac_max_items: 50
+   clip_aoi: true
+   merge_outputs: true
+   output_format: cog
+
+GEE:
+  project_id: gee-downloader-466919
+  target: water
+  ## download or info, info: only get the metadata, not download the data
+  mode: download
+  cloud_percentage: 50
+  snowice_percentage: 5
+  ## percent of the AOI that must carry valid pixels for a merged file to be written.
+  ## 0 keeps every acquisition; raise it to drop overpasses that only clip the AOI edge.
+  min_aoi_coverage: 90
+
+## download the level-1 images from google cloud storage, for S2, it is in format of SAFE
+GCLD:
+  ## using a csv file to define the date ranges for each cell, the csv file should contain columns: name, date (yyyymmdd), product_ids (comma separated)
+  date_csv: /home/yan/WorkSpace/projects/DFO-IZ-MAPPING/data_test_downloader/good_images.csv  #this is mandate, and it will overwrite the start_date and end_date in GLOBAL
+  remove_downloaded: false   #remove the downloaded files from google cloud after processing, only keep the final outputs
+  acolite_dir: /home/yan/WorkSpace/open_source/acolite_origin/acolite #require acolite to generate TOA reflectance
+
+## download Sentinel-3 products from the Copernicus Data Space Ecosystem (CDSE) OData API
+CDSE:
+  cdse_username: your_cdse_email@example.com   # CDSE account email
+  cdse_password: your_cdse_password            # CDSE account password
+  ## optional: a csv with columns name, date (yyyymmdd), product_ids (CDSE UUIDs, comma-separated)
+  ## if omitted, products are discovered automatically by AOI + date range via the catalog search
+  #date_csv: /path/to/good_images_s3.csv
+  remove_downloaded: false   # remove extracted product folders after TOA generation
+  acolite_dir: /path/to/acolite                # path to the acolite source directory
+  ## cloud masking — appends a classification band to each TOA GeoTIFF
+  ## classification band encoding: 0=clear_land  1=clear_water  2=cloud_land  3=cloud_water  255=invalid
+  cloud_masking: true        # set to true to enable cloud masking
+  cloud_buffer_size: 2        # IdePix cloud buffer radius in pixels (~300 m each)
+  ## cloud_mask_method controls how the classification band is built (requires cloud_masking: true)
+  ##   idepix  — use ESA SNAP IdePix via esa_snappy; auto-falls back to native on pre-AVX2 CPUs (default)
+  ##   native  — always use native OLCI qualityFlags.nc bits; safe on all CPUs, no SNAP required
+  cloud_mask_method: idepix
+
+
+ASSETS:
+  - S2_L1TOA:
+      stac_source: sentinel-2-l1c
+      gee_source: COPERNICUS/S2_HARMONIZED
+      gcld_source: sentinel_2_index
+      include_bands: B1,B2,B3,B4,B5,B6,B7,B8,B8A,B9,B10,B11,B12
+      resolution: 10
+      save_dir: L1
+      anonym: s2_msi
+      obs_geo_pixel: true
+
+  - S2_L2SURF:
+      stac_source: sentinel-2-l2a
+      gee_source: COPERNICUS/S2_SR_HARMONIZED
+      include_bands: B1,B2,B3,B4,B5,B6,B7,B8,B8A,B9,B10,B11,B12,QA60,SCL
+      resolution: 10
+      save_dir: L2
+      anonym: s2_msi
+      obs_geo_pixel: false
+
+  - ALPHAEARTH_V1:
+      stac_source: NONE # No STAC source available
+      gee_source: GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL
+      include_bands: A00,A01,A02,A03,A04,A05,A06,A07,A08,A09,A10,A11,A12,A13,A14,A15,A16,A17,A18,A19,A20,A21,A22,A23,A24,A25,A26,A27,A28,A29,A30,A31,A32,A33,A34,A35,A36,A37,A38,A39,A40,A41,A42,A43,A44,A45,A46,A47,A48,A49,A50,A51,A52,A53,A54,A55,A56,A57,A58,A59,A60,A61,A62,A63
+      resolution: 10
+      save_dir: EMBEDDING
+      anonym: alphaearth_v1
+
+  - S2_L2RGB:
+      stac_source: sentinel-2-l2a
+      gee_source: COPERNICUS/S2_SR_HARMONIZED
+      include_bands: TCI_R, TCI_G, TCI_B
+      resolution: 10
+      save_dir: L2RGB
+      anonym: s2_msi
+      vmin: 0
+      vmax: 255
+
+  - LC08_L1TOA:
+      stac_source: NONE
+      gee_source: LANDSAT/LC08/C02/T1_TOA
+      include_bands: B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11,QA_PIXEL,QA_RADSAT,SAA,SZA,VAA,VZA
+      resolution: 30
+      save_dir: L1
+      anonym: l8_oli
+
+  - LC09_L1TOA:
+     stac_source: NONE
+     gee_source: LANDSAT/LC09/C02/T1_TOA
+     include_bands: B1,B2,B3,B4,B5,B6,B7,B8,B9,B10,B11,QA_PIXEL,QA_RADSAT,SAA,SZA,VAA,VZA
+     resolution: 30
+     save_dir: L1
+     anonym: l9_oli2
+
+  - S3_L1TOA:
+     stac_source: NONE
+     gee_source: COPERNICUS/S3/OLCI
+     cdse_source: SENTINEL-3             # CDSE collection name
+     cdse_product_type: ol_1_efr         # ol_1_efr | ol_1_err | sl_1_rbt | sy_2_syn
+     include_bands: Oa01,Oa02,Oa03,Oa04,Oa05,Oa06,Oa07,Oa08,Oa09,Oa10,Oa11,Oa12,Oa13,Oa14,Oa15,Oa16,Oa17,Oa18,Oa19,Oa20,Oa21
+     resolution: 300
+     save_dir: L1
+     anonym: s3_olci
+     obs_geo_pixel: true
+
+  - S1_L1C:
+      stac_source: NONE
+      gee_source: COPERNICUS/S1_GRD
+      include_bands: HH,HV,VV,VH,angle
+      resolution: 10
+      anonym: s1_sar
+      save_dir: L1
+
+
