@@ -144,7 +144,8 @@ class GEEDownloader(Downloader):
                 rgb = True
 
             data_source = config[asset]['source']
-            obs_geo_pixel = False if 'obs_geo_pixel' not in config_asset else config_asset['obs_geo_pixel'] in ('True', 'true')
+            # .ini configs give the string 'True'/'true', YAML gives a bool: accept both
+            obs_geo_pixel = str(config_asset.get('obs_geo_pixel', False)).strip().lower() == 'true'
 
             bands = [str.strip(_) for _ in config[asset]['include_bands'].split(',')]
             resolution = int(config[asset]['resolution'])
