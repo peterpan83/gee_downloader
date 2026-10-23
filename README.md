@@ -88,9 +88,9 @@ Authenticate on the host using the Google commands above, then run:
 ```bash
 mkdir -p output
 docker run --rm \
-  -e GOOGLE_APPLICATION_CREDENTIALS=/credentials/application_default_credentials.json \
-  -v "$HOME/.config/gcloud:/credentials:ro" \
-  -v "$PWD/docker-download.yaml:/config/download.yaml:ro" \
+  -e GOOGLE_APPLICATION_CREDENTIALS=/credentials/google.json \
+  --mount "type=bind,src=$HOME/.config/gcloud/application_default_credentials.json,dst=/credentials/google.json,readonly" \
+  --mount "type=bind,src=$PWD/docker-download.yaml,dst=/config/download.yaml,readonly" \
   -v "$PWD/data:/data:ro" \
   -v "$PWD/output:/output" \
   gee-downloader -c /config/download.yaml
